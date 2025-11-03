@@ -87,7 +87,7 @@ export const MAP_CONFIG = {
   CLUSTER_RADIUS: 13, // Cluster radius in pixels
   CLUSTER_MIN_ZOOM: 5, // Start clustering at this zoom level (clustering enabled at/above this zoom)
   CIRCLE_MIN_ZOOM: 4, // Hide gym circles below this zoom level (desktop)
-  CIRCLE_MIN_ZOOM_MOBILE: 8, // Hide gym circles below this zoom level (mobile)
+  CIRCLE_MIN_ZOOM_MOBILE: 12, // Hide gym circles below this zoom level (mobile)
   POPUP_ZOOM: 12, // Zoom level when clicking on a marker (desktop)
   POPUP_ZOOM_MOBILE: 12, // Zoom level when clicking on a marker (mobile)
 };
