@@ -5,8 +5,7 @@ import { createMapManager } from './components/MapManager.js';
 import { createGymList } from './components/GymList.js';
 import { initPasswordModal } from './components/PasswordModal.js';
 import { createAccountModal } from './components/AccountModal.js';
-import { useAppStore } from './store/index.js';
-import { getUsername, getPassword, getUserId } from './lib/username.js';
+import { useAppStore, useAuth } from './store/index.js';
 import { createGymListToggle } from './components/GymListToggle.js';
 import { createGymListSort } from './components/GymListSort.js';
 import { inject } from '@vercel/analytics';
@@ -96,20 +95,22 @@ async function initApp() {
     // Initialize password modal
     const passwordModal = initPasswordModal();
     
+    // Set password modal reference in map manager (for vote button login redirect)
+    mapManager.setPasswordModal(passwordModal);
+    
     // Initialize account modal
     const accountModal = createAccountModal();
     
     // Wire up password setup button in account modal
     accountModal.onSetupPassword(() => {
-      const username = getUsername();
-      const hasPassword = getPassword();
+      const auth = useAuth();
       if (passwordModal && passwordModal.show) {
-        if (hasPassword) {
+        if (auth.password) {
           // User has password, show login mode (can reset)
-          passwordModal.show('login', username);
+          passwordModal.show('login', auth.username);
         } else {
           // No password, show register mode
-          passwordModal.show('register', username);
+          passwordModal.show('register', auth.username);
         }
       }
     });
@@ -119,11 +120,11 @@ async function initApp() {
       const manageAccountBtn = document.getElementById('manageAccountBtn');
       if (!manageAccountBtn) return;
       
-      const userId = getUserId();
+      const auth = useAuth();
       // Find the text span (the span that contains "Login" or "Stats")
       const textSpan = manageAccountBtn.querySelector('span:last-child');
       if (textSpan) {
-        if (userId) {
+        if (auth.isLoggedIn) {
           // User is logged in, show "Stats"
           textSpan.textContent = 'Statistics';
         } else {
@@ -139,9 +140,9 @@ async function initApp() {
     // Login/Stats button - show login modal if not logged in, stats modal if logged in
     const manageAccountBtn = document.getElementById('manageAccountBtn');
     manageAccountBtn?.addEventListener('click', () => {
-      const userId = getUserId();
+      const auth = useAuth();
       
-      if (userId) {
+      if (auth.isLoggedIn) {
         // User is logged in (has user_id), show stats modal
         console.log('Opening account modal...');
         if (accountModal && accountModal.show) {
@@ -166,11 +167,11 @@ async function initApp() {
     }
 
     // Fetch voted gym IDs for current user (do this first, before loading gyms)
-    const username = getUsername();
+    const auth = useAuth();
     let votedGymIds = [];
-    if (username) {
+    if (auth.username && auth.isLoggedIn) {
       try {
-        votedGymIds = await fetchVotedGymIds(username);
+        votedGymIds = await fetchVotedGymIds(auth.username);
         console.log(`[App] User has voted on ${votedGymIds.length} gyms`);
       } catch (error) {
         console.error('[App] Error fetching voted gym IDs:', error);
@@ -294,10 +295,10 @@ async function initApp() {
       const gymId = e.detail;
       if (gymId) {
         // Refresh voted gym IDs and update map
-        const username = getUsername();
-        if (username) {
+        const auth = useAuth();
+        if (auth.username && auth.isLoggedIn) {
           try {
-            const newVotedGymIds = await fetchVotedGymIds(username);
+            const newVotedGymIds = await fetchVotedGymIds(auth.username);
             if (mapManager.setVotedGyms) {
               mapManager.setVotedGyms(newVotedGymIds);
             }
@@ -352,12 +353,11 @@ async function initApp() {
       }, { passive: true });
 
       // Configure feedbackfin with user info if available
-      const username = getUsername();
-      const userId = getUserId();
+      const auth = useAuth();
       if (window.feedbackfin && window.feedbackfin.config) {
         window.feedbackfin.config.user = {
-          name: username || null,
-          id: userId || null,
+          name: auth.username || null,
+          id: auth.userId || null,
         };
       }
     }

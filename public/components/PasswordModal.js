@@ -1,6 +1,6 @@
 // Password modal component for registration/login
 import { register, login, checkUser } from '../services/api.js';
-import { getUsername, setPassword, setUserId } from '../lib/username.js';
+import { useAuth } from '../store/index.js';
 
 export function initPasswordModal() {
   const modal = document.getElementById('passwordModal');
@@ -30,7 +30,8 @@ export function initPasswordModal() {
     }
     
     if (usernameInput) {
-      usernameInput.value = username || getUsername() || '';
+      const auth = useAuth();
+      usernameInput.value = username || auth.username || '';
       usernameInput.disabled = !!username;
     }
     
@@ -151,8 +152,9 @@ export function initPasswordModal() {
         
         // User doesn't exist or doesn't have password - proceed with registration
         const result = await register(username, null);
+        const auth = useAuth();
         if (result.user_id) {
-          setUserId(result.user_id);
+          auth.login(result.user_id, username, null);
         }
         if (statusEl) {
           statusEl.textContent = '✅ Username registered! Password is optional.';
@@ -205,8 +207,9 @@ export function initPasswordModal() {
           }
           return;
         }
+        const auth = useAuth();
         if (check.user_id) {
-          setUserId(check.user_id);
+          auth.login(check.user_id, username, null);
         }
         if (statusEl) {
           statusEl.textContent = '✅ Logged in (no password set)';
@@ -258,9 +261,12 @@ export function initPasswordModal() {
         result = await login(username, password);
       }
       
-      setPassword(password);
+      const auth = useAuth();
       if (result.user_id) {
-        setUserId(result.user_id);
+        auth.login(result.user_id, username, password);
+      } else {
+        // Still update password even if no user_id (shouldn't happen but handle gracefully)
+        auth.setPassword(password);
       }
       
       if (statusEl) {

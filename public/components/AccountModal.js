@@ -1,6 +1,6 @@
 // Account Modal - shows user stats, regions, farthest gyms, and password setup
 import { fetchUserStats } from '../services/api.js';
-import { getUsername, getUserId } from '../lib/username.js';
+import { useAuth } from '../store/index.js';
 
 export function createAccountModal() {
   const modal = document.getElementById('accountModal');
@@ -106,13 +106,15 @@ export function createAccountModal() {
 
   // Show modal with user stats
   async function show() {
-    const userId = getUserId();
-    const username = getUsername();
+    const auth = useAuth();
     
-    if (!userId) {
+    if (!auth.isLoggedIn || !auth.userId) {
       alert('Please log in to view your account');
       return;
     }
+    
+    const userId = auth.userId;
+    const username = auth.username;
 
     try {
       // Show modal immediately with loading state

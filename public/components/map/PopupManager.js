@@ -4,6 +4,7 @@ import { formatDistance } from '../../lib/ui-utils.js';
 import { haversineMeters } from '../../lib/geo.js';
 import { fetchGymById } from '../../services/api.js';
 import { STYLE_COLORS, MAP_CONFIG } from '../../lib/constants.js';
+import { useAuth } from '../../store/index.js';
 
 // Constants
 const UTILITY_NAMES = {
@@ -453,14 +454,19 @@ function createPopupContent(gym) {
   `;
 }
 
-export function createPopupManager(map) {
+export function createPopupManager(map, passwordModal = null) {
   let votePanel = null;
   let gymPopup = null;
   let currentGymId = null;
   let pendingGymId = null; // Track which gym is currently being fetched
+  let pendingGymForVote = null; // Store gym to vote on after login
   
   function setVotePanel(panel) {
     votePanel = panel;
+  }
+  
+  function setPasswordModal(modal) {
+    passwordModal = modal;
   }
   
   function attachVoteButtonHandler(gym) {
@@ -472,8 +478,41 @@ export function createPopupManager(map) {
     voteBtn.parentNode.replaceChild(newVoteBtn, voteBtn);
     newVoteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (votePanel) {
-        votePanel.showVotePanel(gym);
+      
+      // Check if user is logged in (has user_id)
+      const auth = useAuth();
+      
+      if (!auth.isLoggedIn) {
+        // User not logged in - show login modal first
+        pendingGymForVote = gym; // Store gym to vote on after login
+        if (passwordModal && passwordModal.show) {
+          // Set up one-time callback to show vote panel after login
+          const showVoteAfterLogin = () => {
+            if (pendingGymForVote && votePanel) {
+              // Small delay to ensure login state is updated
+              setTimeout(() => {
+                votePanel.showVotePanel(pendingGymForVote);
+                pendingGymForVote = null;
+              }, 200);
+            }
+          };
+          
+          // Register callback for this login session only
+          if (passwordModal.onLoginSuccess) {
+            const originalCallback = passwordModal.onLoginSuccess;
+            // Temporarily override callback
+            passwordModal.onLoginSuccess(showVoteAfterLogin);
+          }
+          
+          passwordModal.show('register');
+        } else {
+          alert('Please log in to vote');
+        }
+      } else {
+        // User is logged in - show vote panel directly
+        if (votePanel) {
+          votePanel.showVotePanel(gym);
+        }
       }
     });
   }
@@ -604,6 +643,7 @@ async function refreshPopupForGym(gymId) {
     showGymPopup,
     refreshPopupForGym,
     setVotePanel,
+    setPasswordModal,
     get popup() { return gymPopup; },
     get currentGymId() { return currentGymId; },
     createPopupContent, // Expose for external use if needed

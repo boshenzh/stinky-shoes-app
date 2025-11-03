@@ -131,6 +131,11 @@ export function createMapManager(config) {
   
   // Update popup manager with vote panel reference
   popupManager.setVotePanel(votePanel);
+  
+  // Password modal will be set from app.js after initialization
+  function setPasswordModal(modal) {
+    popupManager.setPasswordModal(modal);
+  }
 
   // Initialize layers
   const layers = createMapLayers(map, popupManager);
@@ -154,6 +159,7 @@ export function createMapManager(config) {
     getBounds,
     easeTo,
     showGymPopup: popupManager.showGymPopup.bind(popupManager),
+    setPasswordModal,
     get gymPopup() { return popupManager.popup; },
     get userLngLat() { return controls.userLngLat; },
   };
