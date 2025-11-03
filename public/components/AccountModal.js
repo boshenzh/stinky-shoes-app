@@ -20,6 +20,10 @@ export function createAccountModal() {
     }
 
     const total = regions.reduce((sum, [_, count]) => sum + count, 0);
+    if (total === 0) {
+      return '<div class="text-center py-4 text-sm text-gray-500 italic">No region data available</div>';
+    }
+    
     const colors = [
       '#ef4446', '#3b82f6', '#f97316', '#22c55e', 
       '#a855f7', '#ec4899', '#14b8a6', '#f59e0b'
@@ -36,13 +40,20 @@ export function createAccountModal() {
       const startAngle = currentAngle;
       const endAngle = currentAngle + angle;
       
-      const x1 = center + radius * Math.cos(startAngle);
-      const y1 = center + radius * Math.sin(startAngle);
-      const x2 = center + radius * Math.cos(endAngle);
-      const y2 = center + radius * Math.sin(endAngle);
-      
-      const largeArcFlag = percentage > 50 ? 1 : 0;
-      const path = `M ${center} ${center} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
+      // Handle full circle case (100% - single region)
+      let path;
+      if (Math.abs(angle - 2 * Math.PI) < 0.001) {
+        // Full circle - use circle path
+        path = `M ${center} ${center - radius} A ${radius} ${radius} 0 1 1 ${center - 0.01} ${center - radius} Z`;
+      } else {
+        const x1 = center + radius * Math.cos(startAngle);
+        const y1 = center + radius * Math.sin(startAngle);
+        const x2 = center + radius * Math.cos(endAngle);
+        const y2 = center + radius * Math.sin(endAngle);
+        
+        const largeArcFlag = angle > Math.PI ? 1 : 0;
+        path = `M ${center} ${center} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
+      }
       
       currentAngle = endAngle;
       
@@ -129,7 +140,10 @@ export function createAccountModal() {
       console.log('Account stats received:', {
         gymsVisited: stats.gymsVisited,
         hasStinkiestGym: !!stats.stinkiestGym,
-        stinkiestGym: stats.stinkiestGym
+        stinkiestGym: stats.stinkiestGym,
+        regionStats: stats.regionStats,
+        regionStatsKeys: stats.regionStats ? Object.keys(stats.regionStats) : null,
+        regionStatsLength: stats.regionStats ? Object.keys(stats.regionStats).length : 0
       });
 
       // Update username (from API response, fallback to stored username)
@@ -137,15 +151,26 @@ export function createAccountModal() {
         usernameEl.textContent = `👤 ${stats.username || username || 'User'}`;
       }
 
-      // Update region chart
-      if (regionChartEl && stats.regionStats) {
-        regionChartEl.innerHTML = createRegionPieChart(stats.regionStats);
+      // Update region chart - show even if user has only visited one gym
+      if (regionChartEl) {
+        if (stats.regionStats && Object.keys(stats.regionStats).length > 0) {
+          console.log('Rendering pie chart with regionStats:', stats.regionStats);
+          regionChartEl.innerHTML = createRegionPieChart(stats.regionStats);
+        } else if (stats.gymsVisited >= 1) {
+          // Show a message if user has visited gyms but no region data
+          console.log('No region data available, showing message');
+          regionChartEl.innerHTML = '<div class="text-center py-4 text-sm text-gray-500 italic">Region data not available for visited gym(s)</div>';
+        } else {
+          // Show message if no gyms visited
+          console.log('No gyms visited');
+          regionChartEl.innerHTML = '<div class="text-center py-4 text-sm text-gray-500 italic">Visit gyms to see region distribution</div>';
+        }
       }
 
       // Update farthest gyms (match popup card style) - only show the farthest pair
       if (farthestGymsEl && stats.farthestGyms) {
         if (stats.farthestGyms.length === 0) {
-          farthestGymsEl.innerHTML = '<div class="text-center text-xs sm:text-sm text-gray-500 italic">Need at least 2 gyms to calculate distance</div>';
+          farthestGymsEl.innerHTML = '<div class="text-center text-xs sm:text-sm text-gray-500 italic">Go to more than 2 gyms to unlock this!</div>';
         } else {
           const farthestPair = stats.farthestGyms[0];
           farthestGymsEl.innerHTML = `

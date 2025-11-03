@@ -310,8 +310,7 @@ async function initApp() {
       }
     });
 
-    // Initial render
-    gymList.setAll(all);
+    // Note: Initial render is handled by loadGymsForViewport() which calls gymList.setAll()
 
     // Handle mobile tap for Buy Me a Coffee button
     const buyMeCoffeeBtn = document.getElementById('buyMeCoffeeBtn');
