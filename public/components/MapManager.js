@@ -3,7 +3,7 @@ import { createMapControls } from './map/MapControls.js';
 import { createMapLayers } from './map/MapLayers.js';
 import { createPopupManager } from './map/PopupManager.js';
 import { createVotePanel } from './map/VotePanel.js';
-import { MAP_CONFIG } from '../lib/constants.js';
+import { MAP_CONFIG, getMapMinZoom } from '../lib/constants.js';
 import { Protocol } from 'pmtiles';
 
 // Register PMTiles protocol with MapLibre (only once)
@@ -129,6 +129,7 @@ export function createMapManager(config) {
     style: styleUrl,
     center: MAP_CONFIG.DEFAULT_CENTER,
     zoom: MAP_CONFIG.DEFAULT_ZOOM,
+    minZoom: getMapMinZoom(), // Minimum zoom level (8 on mobile, 0 on desktop)
     attributionControl: true,
   });
   

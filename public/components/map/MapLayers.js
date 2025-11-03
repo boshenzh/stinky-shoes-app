@@ -1,5 +1,5 @@
 // Map layers module - handles gym layers (heatmap, circles, visited icons)
-import { HEATMAP_COLORS, HEATMAP_CONFIG, CIRCLE_CONFIG, DIFFICULTY_COLORS, MAP_CONFIG } from '../../lib/constants.js';
+import { HEATMAP_COLORS, HEATMAP_CONFIG, CIRCLE_CONFIG, DIFFICULTY_COLORS, MAP_CONFIG, getCircleMinZoom } from '../../lib/constants.js';
 
 // Icon configuration for visited gyms (programmatically generated red cross)
 const VISITED_GYM_ICON = {
@@ -420,7 +420,7 @@ export function createMapLayers(map, popupManager) {
       id: 'gyms-circles',
       type: 'circle',
       source: 'gyms',
-      minzoom: MAP_CONFIG.CIRCLE_MIN_ZOOM,
+      minzoom: getCircleMinZoom(),
       paint: {
         'circle-radius': currentMode === 'stinky' ? CIRCLE_CONFIG.STINKY.RADIUS : CIRCLE_CONFIG.DIFFICULTY.RADIUS,
         'circle-color': currentMode === 'stinky' ? [
@@ -566,7 +566,7 @@ export function createMapLayers(map, popupManager) {
               'icon-halo-blur': 1,
             },
             filter: ['==', ['get', 'has_voted'], true],
-            minzoom: MAP_CONFIG.CIRCLE_MIN_ZOOM,
+            minzoom: getCircleMinZoom(),
           };
 
           if (beforeLayer) {
@@ -624,10 +624,24 @@ export function createMapLayers(map, popupManager) {
 
   // ==================== Main Functions ====================
   
-  function addGymsLayer(geojson, onClick, votedIds = []) {
+  // Track retry attempts to prevent infinite loops
+  let addGymsLayerRetryCount = 0;
+  const MAX_ADD_GYMS_RETRIES = 3;
+  
+  function addGymsLayer(geojson, onClick, votedIds = [], retryCount = 0) {
+    // Prevent infinite retries
+    if (retryCount >= MAX_ADD_GYMS_RETRIES) {
+      console.error('[MapLayers] Max retries reached for addGymsLayer, aborting');
+      return;
+    }
+    
     // Validate container and data
     if (!map.getContainer() || !map.getContainer().offsetWidth) {
-      map.once('load', () => addGymsLayer(geojson, onClick, votedIds));
+      if (retryCount < MAX_ADD_GYMS_RETRIES) {
+        map.once('load', () => addGymsLayer(geojson, onClick, votedIds, retryCount + 1));
+      } else {
+        console.error('[MapLayers] Container not ready after max retries');
+      }
       return;
     }
 
@@ -638,9 +652,16 @@ export function createMapLayers(map, popupManager) {
 
     // Ensure style is loaded before adding layers
     if (!map.isStyleLoaded()) {
-      map.once('style.load', () => addGymsLayer(geojson, onClick, votedIds));
+      if (retryCount < MAX_ADD_GYMS_RETRIES) {
+        map.once('style.load', () => addGymsLayer(geojson, onClick, votedIds, retryCount + 1));
+      } else {
+        console.error('[MapLayers] Style not loaded after max retries');
+      }
       return;
     }
+    
+    // Reset retry count on successful start
+    addGymsLayerRetryCount = 0;
 
     try {
       const preparedGeoJSON = prepareGeoJSON(geojson, votedIds);
@@ -665,9 +686,11 @@ export function createMapLayers(map, popupManager) {
       });
     } catch (error) {
       console.error('[MapLayers] Error adding gyms layers:', error);
-      // Retry if style wasn't ready
-      if (!map.isStyleLoaded()) {
-        map.once('style.load', () => addGymsLayer(geojson, onClick, votedIds));
+      // Retry if style wasn't ready (with retry limit)
+      if (!map.isStyleLoaded() && retryCount < MAX_ADD_GYMS_RETRIES) {
+        map.once('style.load', () => addGymsLayer(geojson, onClick, votedIds, retryCount + 1));
+      } else {
+        console.error('[MapLayers] Cannot retry - max retries reached or style is loaded');
       }
     }
   }

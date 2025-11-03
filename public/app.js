@@ -294,13 +294,24 @@ async function initApp() {
     };
 
     // Wait for map to be ready before loading gyms
+    let hasAttemptedLoad = false; // Flag to prevent infinite retries
     const addLayersWhenReady = () => {
+      // Prevent multiple concurrent attempts
+      if (hasAttemptedLoad) {
+        console.warn('[App] Already attempted to load gyms, skipping retry');
+        return;
+      }
+      
       // Check if map is ready
       const isReady = mapManager.map.isStyleLoaded() && mapManager.map.loaded();
       
       if (isReady) {
         console.log('[App] Map is ready, loading gyms...');
-        loadGymsForViewport();
+        hasAttemptedLoad = true;
+        loadGymsForViewport().finally(() => {
+          // Reset flag after loading completes (success or failure) to allow retry if needed
+          setTimeout(() => { hasAttemptedLoad = false; }, 5000);
+        });
       } else {
         showLoading('Waiting for map to load...');
         console.log('[App] Waiting for map to load...');
@@ -308,44 +319,97 @@ async function initApp() {
         // Wait for both style.load and load events (style.load is fired when style is loaded, load is fired when map is ready)
         let styleLoaded = false;
         let mapLoaded = false;
+        let timeoutReached = false;
         
         const checkAndLoad = () => {
+          // Always hide loading when both events have fired
           if (styleLoaded && mapLoaded) {
-            console.log('[App] Map fully loaded, loading gyms...');
-            loadGymsForViewport();
+            if (!hasAttemptedLoad) {
+              console.log('[App] Map fully loaded, loading gyms...');
+              hasAttemptedLoad = true;
+              // Hide any previous loading message (like "preparing gyms...")
+              hideLoading();
+              // Load gyms with loading indicator
+              loadGymsForViewport(true).catch(err => {
+                console.error('[App] Error in loadGymsForViewport:', err);
+                hideLoading(); // Ensure loading is hidden on error
+              }).finally(() => {
+                // Reset flag after loading completes
+                setTimeout(() => { hasAttemptedLoad = false; }, 5000);
+              });
+            } else {
+              // Both loaded but already attempted - just hide loading to prevent hang
+              hideLoading();
+            }
           }
         };
         
         mapManager.map.once('style.load', () => {
           console.log('[App] Map style loaded');
           styleLoaded = true;
-          showLoading('Map style loaded, preparing gyms...');
+          // Update loading message only if map hasn't loaded yet
+          if (!timeoutReached && !mapLoaded) {
+            showLoading('Map style loaded, preparing gyms...');
+          } else if (mapLoaded && !hasAttemptedLoad) {
+            // Both loaded now - checkAndLoad will handle loading and hide indicator
+            hideLoading(); // Hide any previous loading message
+          }
           checkAndLoad();
         });
         
         mapManager.map.once('load', () => {
           console.log('[App] Map loaded');
           mapLoaded = true;
+          // Hide loading message if style already loaded
+          if (styleLoaded && !timeoutReached) {
+            // Both loaded now - checkAndLoad will handle loading
+          } else if (!timeoutReached) {
+            // Map loaded but style not loaded yet - update message
+            showLoading('Map loaded, preparing gyms...');
+          }
           checkAndLoad();
         });
         
         // Fallback timeout in case events don't fire
         setTimeout(() => {
-          if (!styleLoaded || !mapLoaded) {
+          timeoutReached = true;
+          // If both events already fired, we're good - loading indicator should be hidden by checkAndLoad
+          if (styleLoaded && mapLoaded) {
+            // Both loaded - checkAndLoad should have handled it, but hide loading just in case
+            if (!hasAttemptedLoad) {
+              console.warn('[App] Timeout reached but both events fired - forcing load');
+              hasAttemptedLoad = true;
+              hideLoading();
+              loadGymsForViewport(true).finally(() => {
+                setTimeout(() => { hasAttemptedLoad = false; }, 5000);
+              });
+            } else {
+              hideLoading(); // Ensure loading is hidden if already attempted
+            }
+          } else if (!styleLoaded || !mapLoaded) {
             console.warn('[App] Map load timeout, attempting to load gyms anyway...');
             // Check if map is at least partially ready
             if (mapManager.map.isStyleLoaded() || mapManager.map.loaded()) {
-              loadGymsForViewport();
+              if (!hasAttemptedLoad) {
+                hasAttemptedLoad = true;
+                hideLoading(); // Hide loading before attempting
+                loadGymsForViewport(true).finally(() => {
+                  setTimeout(() => { hasAttemptedLoad = false; }, 5000);
+                });
+              } else {
+                hideLoading(); // Ensure loading is hidden
+              }
             } else {
-              // Retry once more after another delay
-              setTimeout(() => {
-                console.log('[App] Retrying gym load...');
-                showLoading('Retrying...');
-                loadGymsForViewport();
-              }, 1000);
+              // Map still not ready - show error and stop retrying
+              console.error('[App] Map failed to load after timeout. Please refresh the page.');
+              hideLoading();
+              toast.error('Map failed to load. Please refresh the page.');
+              hasAttemptedLoad = true; // Prevent further retries
+              // Allow retry after longer delay (30 seconds)
+              setTimeout(() => { hasAttemptedLoad = false; }, 30000);
             }
           }
-        }, 5000); // 5 second timeout
+        }, 8000); // 8 second timeout
       }
     };
     

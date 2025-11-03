@@ -65,13 +65,29 @@ export const STYLE_COLORS = {
   slab: '#22c55e',
 };
 
+// Helper function to detect mobile devices
+export function isMobile() {
+  return window.innerWidth < 640;
+}
+
+// Get mobile-aware circle min zoom
+export function getCircleMinZoom() {
+  return isMobile() ? 8 : 4;
+}
+
+// Get mobile-aware map min zoom
+export function getMapMinZoom() {
+  return isMobile() ? 8 : 0; // Allow any zoom on desktop, min 8 on mobile
+}
+
 export const MAP_CONFIG = {
   DEFAULT_CENTER: [-122.0090, 37.3349],
   DEFAULT_ZOOM: 12,
   LABEL_MIN_ZOOM: 12,
   CLUSTER_RADIUS: 13, // Cluster radius in pixels
   CLUSTER_MIN_ZOOM: 5, // Start clustering at this zoom level (clustering enabled at/above this zoom)
-  CIRCLE_MIN_ZOOM: 4, // Hide gym circles below this zoom level
+  CIRCLE_MIN_ZOOM: 4, // Hide gym circles below this zoom level (desktop)
+  CIRCLE_MIN_ZOOM_MOBILE: 8, // Hide gym circles below this zoom level (mobile)
   POPUP_ZOOM: 12, // Zoom level when clicking on a marker (desktop)
   POPUP_ZOOM_MOBILE: 12, // Zoom level when clicking on a marker (mobile)
 };
