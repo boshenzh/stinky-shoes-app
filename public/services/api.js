@@ -83,10 +83,25 @@ export async function fetchGymsByBbox(bounds) {
 }
 
 export async function fetchAllGyms() {
-  const res = await fetch('/api/gyms');
-  if (!res.ok) return { type: 'FeatureCollection', features: [] };
-  const rows = await res.json();
-  return convertRowsToGeoJSON(rows);
+  try {
+    const res = await fetch('/api/gyms');
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error(`[API] Failed to fetch gyms: ${res.status} ${res.statusText}`, errorText);
+      return { type: 'FeatureCollection', features: [] };
+    }
+    const rows = await res.json();
+    if (!Array.isArray(rows)) {
+      console.error('[API] Invalid response format - expected array, got:', typeof rows, rows);
+      return { type: 'FeatureCollection', features: [] };
+    }
+    const geojson = convertRowsToGeoJSON(rows);
+    console.log(`[API] Fetched ${geojson.features.length} gyms from API`);
+    return geojson;
+  } catch (error) {
+    console.error('[API] Error fetching all gyms:', error);
+    return { type: 'FeatureCollection', features: [] };
+  }
 }
 
 export async function fetchGymById(gymId) {

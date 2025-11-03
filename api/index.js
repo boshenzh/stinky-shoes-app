@@ -58,6 +58,43 @@ app.get('/config', (req, res) => {
   });
 });
 
+// Health check endpoint - helps debug production issues
+app.get('/health', async (req, res) => {
+  try {
+    // Check database connection
+    const dbCheck = await pool.query('SELECT COUNT(*) as count FROM gyms');
+    const gymCount = parseInt(dbCheck.rows[0].count);
+    
+    res.json({
+      status: 'ok',
+      database: {
+        connected: true,
+        gymCount: gymCount,
+        hasData: gymCount > 0
+      },
+      environment: {
+        nodeEnv: process.env.NODE_ENV || 'development',
+        hasDatabaseUrl: !!process.env.DATABASE_URL,
+        hasProtomapsKey: !!process.env.PROTOMAPS_API_KEY
+      }
+    });
+  } catch (error) {
+    console.error('[Health] Database check failed:', error);
+    res.status(500).json({
+      status: 'error',
+      database: {
+        connected: false,
+        error: error.message
+      },
+      environment: {
+        nodeEnv: process.env.NODE_ENV || 'development',
+        hasDatabaseUrl: !!process.env.DATABASE_URL,
+        hasProtomapsKey: !!process.env.PROTOMAPS_API_KEY
+      }
+    });
+  }
+});
+
 // Export as Vercel serverless function
 export default app;
 

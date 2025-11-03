@@ -9,6 +9,10 @@ import { useAppStore } from './store/index.js';
 import { getUsername, getPassword, getUserId } from './lib/username.js';
 import { createGymListToggle } from './components/GymListToggle.js';
 import { createGymListSort } from './components/GymListSort.js';
+import { inject } from '@vercel/analytics';
+
+// Initialize Vercel Analytics
+inject();
 
 // Initialize gym list collapse/expand on mobile - now handled by GymListToggle component
 function initGymListToggle() {
@@ -162,9 +166,17 @@ async function initApp() {
     }
 
     // Load all gym data
-    console.log('Fetching all gyms from database...');
+    console.log('[App] Fetching all gyms from database...');
     let geojson = await fetchAllGyms();
-    console.log(`Loaded ${geojson.features.length} gyms`);
+    console.log(`[App] Loaded ${geojson.features.length} gyms`);
+    
+    if (!geojson || !geojson.features || geojson.features.length === 0) {
+      console.warn('[App] WARNING: No gyms loaded! This could indicate:');
+      console.warn('[App] 1. Database connection issue');
+      console.warn('[App] 2. Empty database in production');
+      console.warn('[App] 3. API endpoint not working');
+      console.warn('[App] 4. CORS or network error');
+    }
     
     // Fetch voted gym IDs for current user
     const username = getUsername();

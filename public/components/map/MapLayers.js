@@ -450,9 +450,13 @@ export function createMapLayers(map, popupManager) {
     }
 
     if (!geojson || !geojson.features || !Array.isArray(geojson.features) || geojson.features.length === 0) {
-      console.error('Invalid or empty GeoJSON provided to addGymsLayer');
+      console.error('[MapLayers] Invalid or empty GeoJSON provided to addGymsLayer');
+      console.error('[MapLayers] GeoJSON:', geojson);
+      console.error('[MapLayers] Features count:', geojson?.features?.length || 0);
       return;
     }
+
+    console.log(`[MapLayers] Adding ${geojson.features.length} gym markers to map`);
 
     // Ensure style is loaded before adding layers
     if (!map.isStyleLoaded() || !map.loaded()) {
