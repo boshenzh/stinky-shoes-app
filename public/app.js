@@ -1,6 +1,5 @@
 // Main application orchestrator
-import { getSmell } from './lib/storage.js';
-import { getConfig, fetchGymsByBbox, fetchAllGyms, fetchVotedGymIds } from './services/api.js';
+import { getConfig, fetchGymsByBbox, fetchVotedGymIds } from './services/api.js';
 import { createMapManager } from './components/MapManager.js';
 import { createGymList } from './components/GymList.js';
 import { initPasswordModal } from './components/PasswordModal.js';
@@ -65,7 +64,7 @@ async function initApp() {
     });
 
     // Initialize components
-    const gymList = createGymList(mapManager.map, getSmell);
+    const gymList = createGymList(mapManager.map);
 
     // Wire up component interactions - clicking on list item shows map popup
     const onGymClick = (g) => {

@@ -1,5 +1,5 @@
 // Vote panel module - handles vote panel UI and submission
-import { ensureUsername, getPassword } from '../../lib/username.js';
+import { useAuth } from '../../store/index.js';
 import { submitVote, fetchMyVote, fetchMyUtilityVotes, submitUtilityVote } from '../../services/api.js';
 import { STYLE_COLORS } from '../../lib/constants.js';
 import { toast } from '../Toast.js';
@@ -25,7 +25,8 @@ export function createVotePanel(popupManager) {
     if (!gym) return;
 
     // Get username first
-    const username = ensureUsername();
+    const auth = useAuth();
+    const username = auth.ensureUsername();
     if (!username) {
       toast.error('Please enter a username to vote');
       return;
@@ -535,7 +536,8 @@ export function createVotePanel(popupManager) {
     // Handle vote submission
     const submitBtn = votePanelContent.querySelector('.vote-submit-btn');
     submitBtn?.addEventListener('click', async () => {
-      const username = ensureUsername();
+      const auth = useAuth();
+      const username = auth.ensureUsername();
       if (!username) {
         toast.error('Please enter a username to vote');
         return;
@@ -544,7 +546,7 @@ export function createVotePanel(popupManager) {
       // Build voteData only with fields that were actually interacted with
       const voteData = {
         username,
-        password: getPassword() || null,
+        password: auth.password || null,
       };
       
       // Only include fields if user interacted with them
@@ -625,8 +627,9 @@ export function createVotePanel(popupManager) {
           // Only submit if value changed from initial
           if (voteValue !== initialUtilityVotes[utilityKey]) {
             const voteType = voteValue === 1 ? 'upvote' : 'downvote';
+            const auth = useAuth();
             utilityVotesToSubmit.push(
-              submitUtilityVote(gym.id, utilityKey, voteType, username, getPassword())
+              submitUtilityVote(gym.id, utilityKey, voteType, username, auth.password || null)
             );
           }
         }

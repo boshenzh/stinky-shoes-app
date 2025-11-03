@@ -1,13 +1,7 @@
 // Map layers module - handles gym layers (heatmap, circles, visited icons)
 import { HEATMAP_COLORS, HEATMAP_CONFIG, CIRCLE_CONFIG, DIFFICULTY_COLORS, MAP_CONFIG, getCircleMinZoom } from '../../lib/constants.js';
-
-// Icon configuration for visited gyms (programmatically generated red cross)
-const VISITED_GYM_ICON = {
-  name: 'visited-cross-icon',
-  size: 32,
-  lineWidth: 4,
-  color: '#dc2626',
-};
+import { VISITED_GYM_ICON, loadVisitedIcon as loadVisitedIconUtil } from '../../lib/map-icons.js';
+import { createHeatmapAnimation } from '../../lib/heatmap-animation.js';
 
 // Retry configuration for waiting on layers
 const RETRY_CONFIG = {
@@ -20,8 +14,7 @@ export function createMapLayers(map, popupManager) {
   let currentMode = 'stinky';
   let votedGymIds = new Set();
   let visitedIconLoaded = false;
-  let heatmapAnimationId = null;
-  let animationStartTime = null;
+  let heatmapAnimation = null;
 
   // ==================== Utility Functions ====================
   
@@ -54,106 +47,13 @@ export function createMapLayers(map, popupManager) {
 
   // ==================== Icon Generation ====================
   
-  function generateCrossIcon() {
-    const { size, lineWidth, color } = VISITED_GYM_ICON;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    
-    ctx.clearRect(0, 0, size, size);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = lineWidth;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    
-    // Draw diagonal cross (X shape)
-    ctx.beginPath();
-    ctx.moveTo(lineWidth, lineWidth);
-    ctx.lineTo(size - lineWidth, size - lineWidth);
-    ctx.stroke();
-    
-    ctx.beginPath();
-    ctx.moveTo(size - lineWidth, lineWidth);
-    ctx.lineTo(lineWidth, size - lineWidth);
-    ctx.stroke();
-    
-    return canvas;
-  }
-
   function loadVisitedIcon(callback) {
-    const iconName = VISITED_GYM_ICON.name;
-    
-    // If already loaded, return immediately
-    if (visitedIconLoaded && map.hasImage(iconName)) {
-      if (callback) callback(true);
-      return;
-    }
-    
-    // Wait for circles layer (guarantees style is loaded)
-    waitForLayer('gyms-circles', (layerExists) => {
-      if (!layerExists) {
-        console.warn('[Visited Icon] Circles layer not found, proceeding anyway');
+    loadVisitedIconUtil(map, waitForLayer, (success) => {
+      if (success) {
+        visitedIconLoaded = true;
       }
-      
-      try {
-        const canvas = generateCrossIcon();
-        
-        if (!canvas || canvas.width === 0 || canvas.height === 0) {
-          console.error('[Visited Icon] Invalid canvas generated');
-          if (callback) callback(false);
-          return;
-        }
-        
-        // Convert to data URL
-        let dataUrl;
-        try {
-          dataUrl = canvas.toDataURL('image/png');
-          if (!dataUrl || dataUrl === 'data:,') {
-            dataUrl = canvas.toDataURL();
-          }
-        } catch (e) {
-          console.warn('[Visited Icon] PNG encoding failed, using default:', e);
-          dataUrl = canvas.toDataURL();
-        }
-        
-        if (!dataUrl || dataUrl === 'data:,') {
-          console.error('[Visited Icon] Failed to create data URL');
-          if (callback) callback(false);
-          return;
-        }
-        
-        const img = new Image();
-        const loadTimeout = setTimeout(() => {
-          console.warn('[Visited Icon] Image load timeout');
-          if (callback) callback(false);
-        }, 5000);
-        
-        img.onload = () => {
-          clearTimeout(loadTimeout);
-          try {
-            map.addImage(iconName, img);
-            visitedIconLoaded = true;
-            if (callback) callback(true);
-          } catch (err) {
-            clearTimeout(loadTimeout);
-            console.error('[Visited Icon] Error adding image:', err);
-            if (callback) callback(false);
-          }
-        };
-        
-        img.onerror = () => {
-          clearTimeout(loadTimeout);
-          console.error('[Visited Icon] Failed to load image');
-          if (callback) callback(false);
-        };
-        
-        img.src = dataUrl;
-      } catch (error) {
-        console.error('[Visited Icon] Error generating icon:', error);
-        if (callback) callback(false);
-      }
-    });
+      if (callback) callback(success);
+    }, visitedIconLoaded);
   }
 
   // ==================== Data Preparation ====================
@@ -262,7 +162,10 @@ export function createMapLayers(map, popupManager) {
   
   function removeLayersIfExist() {
     // Stop animation before removing layers
-    stopHeatmapAnimation();
+    if (heatmapAnimation) {
+      heatmapAnimation.stop();
+      heatmapAnimation = null;
+    }
     
     const layerIds = ['gyms-heatmap', 'gyms-circles', 'gyms-labels', 'gyms-visited'];
     layerIds.forEach(id => {
@@ -326,85 +229,15 @@ export function createMapLayers(map, popupManager) {
     
     // Start animation if enabled
     if (HEATMAP_CONFIG.ANIMATION.ENABLED && currentMode === 'stinky') {
-      startHeatmapAnimation();
-    }
-  }
-  
-  /**
-   * Animates the heatmap to create a pulsing "stinky" effect
-   * Uses sine waves to create smooth pulsing animation
-   */
-  function startHeatmapAnimation() {
-    if (heatmapAnimationId !== null) return; // Already animating
-    
-    const layer = map.getLayer('gyms-heatmap');
-    if (!layer) return;
-    
-    animationStartTime = animationStartTime || performance.now();
-    
-    function animate() {
-      const layer = map.getLayer('gyms-heatmap');
-      if (!layer || currentMode !== 'stinky') {
-        stopHeatmapAnimation();
-        return;
+      if (!heatmapAnimation) {
+        heatmapAnimation = createHeatmapAnimation(map, HEATMAP_CONFIG, () => currentMode, () => {
+          heatmapAnimation = null;
+        });
       }
-      
-      const elapsed = (performance.now() - animationStartTime) * HEATMAP_CONFIG.ANIMATION.PULSE_SPEED;
-      
-      // Create pulsing effect using sine waves (different phases for variety)
-      const intensityPulse = Math.sin(elapsed);
-      const radiusPulse = Math.sin(elapsed * 0.8 + Math.PI / 4); // Different phase
-      const opacityPulse = Math.sin(elapsed * 1.2 - Math.PI / 3); // Different phase
-      
-      // Calculate animated values
-      const animatedIntensity = HEATMAP_CONFIG.INTENSITY + 
-        (intensityPulse * HEATMAP_CONFIG.ANIMATION.INTENSITY_VARIATION);
-      const animatedRadius = HEATMAP_CONFIG.RADIUS + 
-        (radiusPulse * HEATMAP_CONFIG.ANIMATION.RADIUS_VARIATION);
-      const animatedOpacity = HEATMAP_CONFIG.OPACITY + 
-        (opacityPulse * HEATMAP_CONFIG.ANIMATION.OPACITY_VARIATION);
-      
-      // Update heatmap properties dynamically
-      try {
-        // Update intensity at zoom 15 (where it's most visible)
-        map.setPaintProperty('gyms-heatmap', 'heatmap-intensity', [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          0, 0.5,
-          15, Math.max(0.1, Math.min(1.5, animatedIntensity)), // Clamp between 0.1 and 1.5
-        ]);
-        
-        // Update radius
-        map.setPaintProperty('gyms-heatmap', 'heatmap-radius', [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          0, animatedRadius * 0.5,
-          10, animatedRadius,
-          15, animatedRadius * 1.5,
-        ]);
-        
-        // Update opacity
-        map.setPaintProperty('gyms-heatmap', 'heatmap-opacity', 
-          Math.max(0.3, Math.min(1.0, animatedOpacity)) // Clamp between 0.3 and 1.0
-        );
-      } catch (e) {
-        // Layer might have been removed
-        stopHeatmapAnimation();
-        return;
-      }
-      
-      heatmapAnimationId = requestAnimationFrame(animate);
-    }
-    
-    animate();
-  }
-  
-  function stopHeatmapAnimation() {
-    if (heatmapAnimationId !== null) {
-      cancelAnimationFrame(heatmapAnimationId);
-      heatmapAnimationId = null;
+      heatmapAnimation.start();
+    } else if (heatmapAnimation) {
+      heatmapAnimation.stop();
+      heatmapAnimation = null;
     }
   }
 
@@ -736,10 +569,15 @@ export function createMapLayers(map, popupManager) {
       
       // Start/stop animation based on visibility
       if (willBeVisible && !wasVisible && HEATMAP_CONFIG.ANIMATION.ENABLED) {
-        animationStartTime = null; // Reset animation timer
-        startHeatmapAnimation();
-      } else if (!willBeVisible && wasVisible) {
-        stopHeatmapAnimation();
+        if (!heatmapAnimation) {
+          heatmapAnimation = createHeatmapAnimation(map, HEATMAP_CONFIG, () => currentMode, () => {
+            heatmapAnimation = null;
+          });
+        }
+        heatmapAnimation.start();
+      } else if (!willBeVisible && wasVisible && heatmapAnimation) {
+        heatmapAnimation.stop();
+        heatmapAnimation = null;
       }
     }
 

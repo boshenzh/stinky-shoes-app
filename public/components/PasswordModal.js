@@ -1,6 +1,8 @@
 // Password modal component for registration/login
 import { register, login, checkUser } from '../services/api.js';
 import { useAuth } from '../store/index.js';
+import { isValidUsername, validatePassword } from '../lib/validation.js';
+import { handleError } from '../lib/error-handler.js';
 
 export function initPasswordModal() {
   const modal = document.getElementById('passwordModal');
@@ -104,17 +106,20 @@ export function initPasswordModal() {
     }
     
     // Validate password if provided
-    if (password && password.length > 0 && password.length < 6) {
-      if (statusEl) {
-        statusEl.textContent = '⚠️ Password must be at least 6 characters';
-        statusEl.className = 'text-xs sm:text-sm text-center min-h-[1.5rem] font-medium text-red-600';
+    if (password && password.length > 0) {
+      const passwordValidation = validatePassword(password);
+      if (!passwordValidation.valid) {
+        if (statusEl) {
+          statusEl.textContent = `⚠️ ${passwordValidation.error || 'Password is required'}`;
+          statusEl.className = 'text-xs sm:text-sm text-center min-h-[1.5rem] font-medium text-red-600';
+        }
+        if (passwordInput) {
+          passwordInput.focus();
+          passwordInput.classList.add('border-red-500');
+          setTimeout(() => passwordInput?.classList.remove('border-red-500'), 3000);
+        }
+        return;
       }
-      if (passwordInput) {
-        passwordInput.focus();
-        passwordInput.classList.add('border-red-500');
-        setTimeout(() => passwordInput?.classList.remove('border-red-500'), 3000);
-      }
-      return;
     }
     
     // Disable submit button
@@ -312,12 +317,5 @@ export function initPasswordModal() {
   });
 
   return { show, close, onLoginSuccess };
-}
-
-function isValidUsername(username) {
-  if (!username || typeof username !== 'string') return false;
-  const trimmed = username.trim();
-  if (trimmed.length < 3 || trimmed.length > 20) return false;
-  return /^[a-zA-Z0-9_-]+$/.test(trimmed);
 }
 

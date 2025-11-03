@@ -1,4 +1,9 @@
 // API service layer
+import { createApiError, createNetworkError, handleError, parseError } from '../lib/error-handler.js';
+import { createRequestCache } from '../lib/async-utils.js';
+
+// Request cache for deduplication
+const requestCache = createRequestCache(60000); // 1 minute TTL
 
 // Helper to parse numeric values from PostgreSQL (which returns numeric types as strings)
 function parseNumericValue(val) {
@@ -14,10 +19,54 @@ function ensureHttps(url) {
   return url.replace(/^http:\/\//, 'https://');
 }
 
+/**
+ * Fetch with error handling
+ * @param {string} url - URL to fetch
+ * @param {Object} options - Fetch options
+ * @returns {Promise<Response>} Fetch response
+ */
+async function fetchWithErrorHandling(url, options = {}) {
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: options.signal || (options.timeout ? AbortSignal.timeout(options.timeout) : undefined),
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error');
+      throw createApiError(
+        `API request failed: ${response.status} ${response.statusText}`,
+        response.status,
+        { url, statusText: response.statusText, errorText }
+      );
+    }
+    
+    return response;
+  } catch (error) {
+    if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+      throw createNetworkError('Request timeout', { url });
+    }
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      throw createNetworkError('Network error: Unable to connect', { url, original: error });
+    }
+    throw error;
+  }
+}
+
 export async function getConfig() {
-  const res = await fetch('/config');
-  if (!res.ok) throw new Error('Failed to fetch /config');
-  return res.json();
+  const cacheKey = 'config';
+  const cached = requestCache.get(cacheKey);
+  if (cached) return cached;
+  
+  return requestCache.set(cacheKey, async () => {
+    try {
+      const res = await fetchWithErrorHandling('/config');
+      return await res.json();
+    } catch (error) {
+      handleError(error, { log: true, showToast: false });
+      throw error;
+    }
+  });
 }
 
 function convertRowsToGeoJSON(rows) {
@@ -84,42 +133,28 @@ function convertRowsToGeoJSON(rows) {
 export async function fetchGymsByBbox(bounds) {
   try {
     const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()].join(',');
+    const cacheKey = `gyms-bbox-${bbox}`;
     const startTime = performance.now();
-    const res = await fetch(`/api/gyms?bbox=${bbox}`);
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error(`[API] Failed to fetch gyms by bbox: ${res.status} ${res.statusText}`, errorText);
-      return { type: 'FeatureCollection', features: [] };
+    
+    // Check cache first
+    const cached = requestCache.get(cacheKey);
+    if (cached) {
+      console.log(`[API] Using cached gyms for bbox (${cached.features.length} gyms)`);
+      return cached;
     }
-    const rows = await res.json();
-    const fetchTime = performance.now() - startTime;
-    const geojson = convertRowsToGeoJSON(rows);
-    console.log(`[API] Fetched ${geojson.features.length} gyms in bbox in ${fetchTime.toFixed(0)}ms`);
-    return geojson;
+    
+    return requestCache.set(cacheKey, async () => {
+      const res = await fetchWithErrorHandling(`/api/gyms?bbox=${bbox}`, { timeout: 30000 });
+      const rows = await res.json();
+      const fetchTime = performance.now() - startTime;
+      const geojson = convertRowsToGeoJSON(rows);
+      console.log(`[API] Fetched ${geojson.features.length} gyms in bbox in ${fetchTime.toFixed(0)}ms`);
+      return geojson;
+    });
   } catch (error) {
-    console.error('[API] Error fetching gyms by bbox:', error);
-    return { type: 'FeatureCollection', features: [] };
-  }
-}
-
-export async function fetchAllGyms() {
-  try {
-    const res = await fetch('/api/gyms');
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error(`[API] Failed to fetch gyms: ${res.status} ${res.statusText}`, errorText);
-      return { type: 'FeatureCollection', features: [] };
-    }
-    const rows = await res.json();
-    if (!Array.isArray(rows)) {
-      console.error('[API] Invalid response format - expected array, got:', typeof rows, rows);
-      return { type: 'FeatureCollection', features: [] };
-    }
-    const geojson = convertRowsToGeoJSON(rows);
-    console.log(`[API] Fetched ${geojson.features.length} gyms from API`);
-    return geojson;
-  } catch (error) {
-    console.error('[API] Error fetching all gyms:', error);
+    const appError = parseError(error);
+    console.error('[API] Error fetching gyms by bbox:', appError);
+    // Return empty GeoJSON on error to prevent app crash
     return { type: 'FeatureCollection', features: [] };
   }
 }
@@ -157,19 +192,23 @@ export async function fetchGymById(gymId) {
 }
 
 export async function fetchVotedGymIds(username) {
-  if (!username) {
-    return [];
-  }
-  try {
-    const res = await fetch(`/api/gyms/voted-gyms?username=${encodeURIComponent(username)}`);
-    if (!res.ok) {
-      return []; // Return empty array on error
+  if (!username) return [];
+  
+  const cacheKey = `voted-gyms-${username}`;
+  const cached = requestCache.get(cacheKey);
+  if (cached) return cached;
+  
+  return requestCache.set(cacheKey, async () => {
+    try {
+      const res = await fetchWithErrorHandling(`/api/gyms/voted-gyms?username=${encodeURIComponent(username)}`);
+      return await res.json();
+    } catch (error) {
+      const appError = parseError(error);
+      console.error('[API] Error fetching voted gym IDs:', appError);
+      // Return empty array on error to prevent app crash
+      return [];
     }
-    return await res.json();
-  } catch (error) {
-    console.error('Error fetching voted gym IDs:', error);
-    return [];
-  }
+  });
 }
 
 export async function fetchMyVote(gymId, username) {

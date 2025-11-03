@@ -1,10 +1,9 @@
 // Gym list component
-import { getStinkScore, stinkBgStyleAttr, inBbox, formatDistance } from '../lib/ui-utils.js';
-import { haversineMeters } from '../lib/geo.js';
+import { getStinkScore, stinkBgStyleAttr, inBbox, formatDistance, haversineMeters } from '../lib/utils.js';
 import { useAppStore } from '../store/index.js';
 import { MAP_CONFIG } from '../lib/constants.js';
 
-export function createGymList(map, getSmell) {
+export function createGymList(map) {
   const $list = document.getElementById('gymList');
   let all = [];
   let onGymClickFn = null;
@@ -148,7 +147,7 @@ export function createGymList(map, getSmell) {
       // Stinky mode: sort by smell (highest first), then by distance (closest first)
       const userLoc = useAppStore.getState().userLocation;
       const withStink = regionGyms.map(g => {
-        const stink = getStinkScore(g, getSmell);
+        const stink = getStinkScore(g);
         let distance = null;
         if (userLoc && g.lat != null && g.lng != null) {
           distance = haversineMeters(userLoc[1], userLoc[0], g.lat, g.lng);
