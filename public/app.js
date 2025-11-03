@@ -218,8 +218,11 @@ async function initApp() {
 
     // Load gyms in viewport first (much faster than loading all 17k+ gyms)
     console.log('[App] Fetching gyms in viewport...');
-    const loadGymsForViewport = async () => {
-      showLoading('Loading gyms...');
+    let isInitialLoad = true;
+    const loadGymsForViewport = async (showLoadingIndicator = false) => {
+      if (showLoadingIndicator || isInitialLoad) {
+        showLoading('Loading gyms...');
+      }
       const startTime = performance.now();
       let geojson;
       
@@ -230,7 +233,9 @@ async function initApp() {
         console.log(`[App] Loaded ${geojson.features.length} gyms in viewport in ${loadTime.toFixed(0)}ms`);
         
         if (!geojson || !geojson.features || geojson.features.length === 0) {
-          hideLoading();
+          if (showLoadingIndicator || isInitialLoad) {
+            hideLoading();
+          }
           console.warn('[App] WARNING: No gyms in viewport! This could indicate:');
           console.warn('[App] 1. Database connection issue');
           console.warn('[App] 2. Empty database in production');
@@ -239,7 +244,9 @@ async function initApp() {
           return;
         }
       } catch (error) {
-        hideLoading();
+        if (showLoadingIndicator || isInitialLoad) {
+          hideLoading();
+        }
         console.error('[App] Error loading gyms:', error);
         toast.error('Failed to load gyms. Please try again.');
         return;
@@ -273,9 +280,15 @@ async function initApp() {
         const layerTime = performance.now() - layerStartTime;
         console.log(`[App] Added ${geojson.features.length} markers to map in ${layerTime.toFixed(0)}ms`);
         gymList.setAll(all);
-        hideLoading();
+        if (showLoadingIndicator || isInitialLoad) {
+          hideLoading();
+        }
+        isInitialLoad = false; // Mark initial load as complete
       } catch (error) {
-        hideLoading();
+        if (showLoadingIndicator || isInitialLoad) {
+          hideLoading();
+        }
+        isInitialLoad = false; // Mark initial load as complete even on error
         console.error('[App] Error adding layers:', error);
         toast.error('Failed to display gyms on map. Please refresh the page.');
       }
@@ -339,12 +352,12 @@ async function initApp() {
     
     addLayersWhenReady();
 
-    // Also reload gyms when viewport changes (but debounced)
+    // Also reload gyms when viewport changes (but debounced, no loading indicator)
     let viewportUpdateTimeout;
     const handleViewportChange = () => {
       clearTimeout(viewportUpdateTimeout);
       viewportUpdateTimeout = setTimeout(() => {
-        loadGymsForViewport().then(() => {
+        loadGymsForViewport(false).then(() => {
           updateListForViewport();
         });
       }, 300); // Debounce viewport updates
