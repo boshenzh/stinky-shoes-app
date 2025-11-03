@@ -13,29 +13,36 @@ export function createMapControls(map) {
 
   // State
   let currentUserLngLat = null;
+  let shouldRecenter = false; // Only recenter when user clicks the button
 
-  // Initialize geolocation
-  map.once('load', () => {
-    try {
-      geolocate.trigger();
-    } catch (e) {
-      // ignore if browser blocks without gesture
-    }
-  });
-
+  // Listen for geolocation updates (for storing location, but don't auto-recenter)
   geolocate.on('geolocate', (pos) => {
     const { longitude, latitude } = pos.coords || {};
     if (typeof longitude === 'number' && typeof latitude === 'number') {
       currentUserLngLat = [longitude, latitude];
       useAppStore.getState().setUserLocation([longitude, latitude]);
-      useAppStore.getState().setViewport({ center: [longitude, latitude], zoom: 12 });
-      map.easeTo({ center: [longitude, latitude], zoom: 12 });
+      
+      // Only recenter if user explicitly clicked the locate button
+      if (shouldRecenter) {
+        useAppStore.getState().setViewport({ center: [longitude, latitude], zoom: 12 });
+        map.easeTo({ center: [longitude, latitude], zoom: 12 });
+        shouldRecenter = false; // Reset flag after recentering
+      }
     }
   });
 
-  // Locate button handler
+  // Listen for geolocation errors (location tracking may fail silently)
+  geolocate.on('error', (e) => {
+    // Silently handle errors - user may have denied permission
+    console.debug('Geolocation error:', e.code, e.message);
+  });
+
+  // Locate button handler - only recenter when user clicks
   const locateBtn = document.getElementById('locateBtn');
-  locateBtn?.addEventListener('click', () => geolocate.trigger());
+  locateBtn?.addEventListener('click', () => {
+    shouldRecenter = true; // Set flag to recenter on next location update
+    geolocate.trigger();
+  });
 
   return {
     get userLngLat() { return currentUserLngLat; },
