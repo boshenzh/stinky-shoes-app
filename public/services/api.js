@@ -7,6 +7,13 @@ function parseNumericValue(val) {
   return isNaN(parsed) ? null : parsed;
 }
 
+// Helper function to convert HTTP URLs to HTTPS
+function ensureHttps(url) {
+  if (!url || typeof url !== 'string') return url;
+  // Replace http:// with https:// for external URLs
+  return url.replace(/^http:\/\//, 'https://');
+}
+
 export async function getConfig() {
   const res = await fetch('/config');
   if (!res.ok) throw new Error('Failed to fetch /config');
