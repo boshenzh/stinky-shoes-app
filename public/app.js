@@ -366,10 +366,59 @@ async function initApp() {
     mapManager.map.on('zoomend', handleViewportChange);
     
     // Listen for style changes and re-add custom layers
-    window.addEventListener('mapstylechange', () => {
-      console.log('[App] Map style changed, reloading gyms...');
-      // Re-load gyms when style changes to ensure custom layers are re-added
-      loadGymsForViewport(false);
+    window.addEventListener('mapstylechange', async () => {
+      console.log('[App] Map style changed, waiting for style to load...');
+      
+      // Wait for style to be fully loaded before reloading gyms
+      const waitForStyleLoad = () => {
+        return new Promise((resolve, reject) => {
+          if (mapManager.map.isStyleLoaded()) {
+            resolve();
+            return;
+          }
+          
+          let timeoutId = setTimeout(() => {
+            console.warn('[App] Style load timeout after 10 seconds');
+            reject(new Error('Style load timeout'));
+          }, 10000); // 10 second timeout
+          
+          mapManager.map.once('style.load', () => {
+            clearTimeout(timeoutId);
+            // Give it a small delay to ensure style is fully ready
+            setTimeout(resolve, 200);
+          });
+          
+          // Also listen for load event as backup
+          mapManager.map.once('load', () => {
+            clearTimeout(timeoutId);
+            setTimeout(resolve, 200);
+          });
+        });
+      };
+      
+      try {
+        await waitForStyleLoad();
+        console.log('[App] Style loaded, reloading gyms...');
+        
+        // Check if layers already exist - if so, just update data instead of recreating
+        const layersExist = mapManager.map.getLayer('gyms-circles') || mapManager.map.getLayer('gyms-heatmap');
+        
+        if (layersExist) {
+          // Layers exist, just update the data
+          const bounds = mapManager.map.getBounds();
+          const geojson = await fetchGymsByBbox(bounds);
+          if (geojson && geojson.features && geojson.features.length > 0) {
+            mapManager.updateGymsData(geojson, votedGymIds);
+            console.log('[App] Updated gyms data after style change');
+          }
+        } else {
+          // Layers don't exist, do a full reload
+          await loadGymsForViewport(false);
+        }
+      } catch (error) {
+        console.error('[App] Error reloading gyms after style change:', error);
+        toast.warning('Style changed but gyms are still loading...');
+      }
     });
 
     // Refresh data function (refetches gyms in viewport and updates vote data)
