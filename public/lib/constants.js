@@ -90,5 +90,6 @@ export const MAP_CONFIG = {
   CIRCLE_MIN_ZOOM_MOBILE: 4, // Hide gym circles below this zoom level (mobile) - lowered from 8 to match desktop
   POPUP_ZOOM: 12, // Zoom level when clicking on a marker (desktop)
   POPUP_ZOOM_MOBILE: 12, // Zoom level when clicking on a marker (mobile)
+  CITY_ZOOM_THRESHOLD: 12, // Zoom level threshold for showing city-level top 5 (below this shows state-level)
 };
 

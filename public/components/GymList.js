@@ -53,8 +53,11 @@ export function createGymList(map) {
     
     // Determine region level based on zoom level
     // Zoom < 8: country level
-    // Zoom >= 8: city level
+    // Zoom >= 8 and < CITY_ZOOM_THRESHOLD: state level
+    // Zoom >= CITY_ZOOM_THRESHOLD: city level
     const isCountryLevel = zoom < 8;
+    const isStateLevel = zoom >= 8 && zoom < MAP_CONFIG.CITY_ZOOM_THRESHOLD;
+    const isCityLevel = zoom >= MAP_CONFIG.CITY_ZOOM_THRESHOLD;
     
     // Find gyms near the center to determine the region
     const gymsInView = all.filter(g => inBbox(g, b));
@@ -67,6 +70,7 @@ export function createGymList(map) {
     
     // Find the most common region based on zoom level
     // Country level: use country_code only
+    // State level: use state + country_code
     // City level: use city + country_code (fallback to state + country_code)
     const regionCounts = {};
     gymsInView.forEach(g => {
@@ -74,6 +78,13 @@ export function createGymList(map) {
       if (isCountryLevel) {
         // Country level: use country only
         regionKey = g.country_code || 'Unknown';
+      } else if (isStateLevel) {
+        // State level: use state + country
+        if (g.state && g.state.trim()) {
+          regionKey = `${g.state}, ${g.country_code || 'Unknown'}`;
+        } else {
+          regionKey = g.country_code || 'Unknown';
+        }
       } else {
         // City level: use city + country (fallback to state + country)
         if (g.city && g.city.trim()) {
@@ -99,6 +110,17 @@ export function createGymList(map) {
     if (isCountryLevel) {
       // Country level: region is just the country
       regionCountry = mostCommonRegion;
+    } else if (isStateLevel) {
+      // State level: parse state and country
+      if (mostCommonRegion.includes(', ')) {
+        const parts = mostCommonRegion.split(', ');
+        if (parts.length >= 2) {
+          regionCountry = parts[parts.length - 1];
+          regionState = parts[0]; // At state level, first part is always the state
+        }
+      } else {
+        regionCountry = mostCommonRegion;
+      }
     } else {
       // City level: parse city/state and country
       if (mostCommonRegion.includes(', ')) {
@@ -119,13 +141,21 @@ export function createGymList(map) {
       }
     }
     
-    // Filter gyms by region (match by city+country, or state+country, or country only)
+    // Filter gyms by region (match by city+country, state+country, or country only)
     const regionGyms = all.filter(g => {
       const gymCountry = g.country_code || 'Unknown';
       
       if (isCountryLevel) {
         // Country level: match by country only
         return gymCountry === regionCountry;
+      } else if (isStateLevel) {
+        // State level: match by state+country
+        if (regionState) {
+          return g.state && g.state.trim() === regionState && gymCountry === regionCountry;
+        } else {
+          // Fallback to country only
+          return gymCountry === regionCountry;
+        }
       } else {
         // City level: match by city+country or state+country
         if (regionCity) {
@@ -189,7 +219,14 @@ export function createGymList(map) {
       displayGyms = withStink.slice(0, 5);
       
       // Update header with region name based on zoom level
-      const regionLabel = isCountryLevel ? regionCountry : mostCommonRegion;
+      let regionLabel;
+      if (isCountryLevel) {
+        regionLabel = regionCountry;
+      } else if (isStateLevel) {
+        regionLabel = regionState ? `${regionState}, ${regionCountry}` : regionCountry;
+      } else {
+        regionLabel = regionCity ? `${regionCity}, ${regionCountry}` : (regionState ? `${regionState}, ${regionCountry}` : regionCountry);
+      }
       const headerText = `💨 Top 5 in ${regionLabel}`;
       const collapsedText = `TOP 5 Stink`;
       if ($headerMobile) $headerMobile.textContent = headerText;
@@ -210,7 +247,14 @@ export function createGymList(map) {
       displayGyms = withDifficulty.slice(0, 5);
       
       // Update header with region name based on zoom level
-      const regionLabel = isCountryLevel ? regionCountry : mostCommonRegion;
+      let regionLabel;
+      if (isCountryLevel) {
+        regionLabel = regionCountry;
+      } else if (isStateLevel) {
+        regionLabel = regionState ? `${regionState}, ${regionCountry}` : regionCountry;
+      } else {
+        regionLabel = regionCity ? `${regionCity}, ${regionCountry}` : (regionState ? `${regionState}, ${regionCountry}` : regionCountry);
+      }
       const headerText = `📊 Top 5 in ${regionLabel}`;
       const collapsedText = `TOP 5 Difficult`;
       if ($headerMobile) $headerMobile.textContent = headerText;
@@ -237,7 +281,14 @@ export function createGymList(map) {
 
     // Show appropriate message if no gyms to display in current mode
     if (displayGyms.length === 0) {
-      const regionLabel = isCountryLevel ? regionCountry : mostCommonRegion;
+      let regionLabel;
+      if (isCountryLevel) {
+        regionLabel = regionCountry;
+      } else if (isStateLevel) {
+        regionLabel = regionState ? `${regionState}, ${regionCountry}` : regionCountry;
+      } else {
+        regionLabel = regionCity ? `${regionCity}, ${regionCountry}` : (regionState ? `${regionState}, ${regionCountry}` : regionCountry);
+      }
       if (currentMode === 'difficulty') {
         $list.innerHTML = `<div class="p-4 text-sm text-gray-500 text-center">No gyms rated with difficulty in ${regionLabel} yet</div>`;
       } else {
