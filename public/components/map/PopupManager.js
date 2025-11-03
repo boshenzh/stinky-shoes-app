@@ -457,6 +457,7 @@ export function createPopupManager(map) {
   let votePanel = null;
   let gymPopup = null;
   let currentGymId = null;
+  let pendingGymId = null; // Track which gym is currently being fetched
   
   function setVotePanel(panel) {
     votePanel = panel;
@@ -477,7 +478,7 @@ export function createPopupManager(map) {
     });
   }
 
-  async function refreshPopupForGym(gymId) {
+async function refreshPopupForGym(gymId) {
     const gymIdStr = String(gymId);
     const currentGymIdStr = currentGymId ? String(currentGymId) : null;
     
@@ -492,6 +493,11 @@ export function createPopupManager(map) {
         return;
       }
       
+      // Check if popup is still showing the same gym (avoid race condition)
+      if (currentGymIdStr !== String(currentGymId)) {
+        return;
+      }
+      
       const gym = normalizeGymData(gymFeature);
       const popupContent = createPopupContent(gym);
       gymPopup.setHTML(popupContent);
@@ -502,11 +508,15 @@ export function createPopupManager(map) {
   }
 
   async function showGymPopup(gymId, lngLat) {
+    // Store the gym ID we're about to fetch
+    const requestedGymId = String(gymId);
     currentGymId = gymId;
+    pendingGymId = requestedGymId;
 
-    // Close existing popup
+    // Close existing popup immediately
     if (gymPopup) {
       gymPopup.remove();
+      gymPopup = null;
     }
 
     // Center map on gym location
@@ -544,18 +554,41 @@ export function createPopupManager(map) {
 
     try {
       const gymFeature = await fetchGymById(gymId);
+      
+      // Check if this request is still valid (user might have clicked another marker)
+      if (pendingGymId !== requestedGymId || currentGymId === null) {
+        // This request is stale, ignore it
+        if (gymPopup && String(currentGymId) === requestedGymId) {
+          // Only remove if it's still showing the same gym
+        } else {
+          return; // Another popup was opened, ignore this result
+        }
+      }
+      
       if (!gymFeature) {
-        gymPopup.setHTML('<div class="p-4 text-center text-red-500">Failed to load gym data</div>');
+        if (gymPopup && String(currentGymId) === requestedGymId) {
+          gymPopup.setHTML('<div class="p-4 text-center text-red-500">Failed to load gym data</div>');
+        }
         return;
+      }
+
+      // Double-check the popup is still showing the requested gym
+      if (!gymPopup || String(currentGymId) !== requestedGymId) {
+        return; // User clicked another marker, ignore this result
       }
 
       const gym = normalizeGymData(gymFeature);
       const popupContent = createPopupContent(gym);
       gymPopup.setHTML(popupContent);
       attachVoteButtonHandler(gym);
+      pendingGymId = null; // Clear pending flag on success
     } catch (err) {
       console.error('Failed to fetch gym data:', err);
-      gymPopup.setHTML('<div class="p-4 text-center text-red-500">Failed to load gym data</div>');
+      // Only update popup if it's still showing the same gym
+      if (gymPopup && String(currentGymId) === requestedGymId) {
+        gymPopup.setHTML('<div class="p-4 text-center text-red-500">Failed to load gym data</div>');
+      }
+      pendingGymId = null;
     }
   }
 
