@@ -2,10 +2,11 @@
 import { HEATMAP_COLORS, HEATMAP_CONFIG, CIRCLE_CONFIG, DIFFICULTY_COLORS, MAP_CONFIG } from '../../lib/constants.js';
 
 // Icon configuration for visited gyms (programmatically generated red cross)
+// Use larger size for better visibility, especially on mobile
 const VISITED_GYM_ICON = {
   name: 'visited-cross-icon',
-  size: 24, // Icon size in pixels (should be larger than circle radius 8px + stroke 3px = ~19px total)
-  lineWidth: 3, // Cross line width
+  size: 32, // Icon size in pixels (increased from 24 for better mobile visibility)
+  lineWidth: 4, // Cross line width (increased from 3 for better visibility)
   color: '#dc2626', // Red color (#dc2626 is a nice vibrant red)
 };
 
@@ -75,23 +76,68 @@ export function createMapLayers(map, popupManager) {
     try {
       console.log('[Visited Icon] Generating cross icon...');
       const canvas = generateCrossIcon();
+      
+      // Verify canvas was created and has content
+      if (!canvas || canvas.width === 0 || canvas.height === 0) {
+        console.error('[Visited Icon] Invalid canvas generated');
+        if (callback) callback(false);
+        return;
+      }
+      
+      // Convert to data URL - try PNG first, fallback to other formats for mobile compatibility
+      let dataUrl;
+      try {
+        dataUrl = canvas.toDataURL('image/png');
+        if (!dataUrl || dataUrl === 'data:,') {
+          // Fallback for browsers that don't support PNG encoding
+          dataUrl = canvas.toDataURL();
+        }
+      } catch (e) {
+        console.warn('[Visited Icon] PNG encoding failed, trying default:', e);
+        dataUrl = canvas.toDataURL();
+      }
+      
+      if (!dataUrl || dataUrl === 'data:,') {
+        console.error('[Visited Icon] Failed to create data URL from canvas');
+        if (callback) callback(false);
+        return;
+      }
+      
       const img = new Image();
+      
+      // Set a timeout for image loading (especially important for mobile)
+      const loadTimeout = setTimeout(() => {
+        console.warn('[Visited Icon] Image load timeout');
+        if (callback) callback(false);
+      }, 5000);
+      
       img.onload = () => {
+        clearTimeout(loadTimeout);
         try {
           map.addImage(iconName, img);
           visitedIconLoaded = true;
-          console.log('[Visited Icon] Icon added successfully');
+          console.log('[Visited Icon] Icon added successfully', {
+            iconName,
+            imageSize: `${img.width}x${img.height}`,
+            canvasSize: `${canvas.width}x${canvas.height}`,
+            hasImage: map.hasImage(iconName)
+          });
           if (callback) callback(true);
         } catch (err) {
+          clearTimeout(loadTimeout);
           console.error('[Visited Icon] Error adding image:', err);
           if (callback) callback(false);
         }
       };
-      img.onerror = () => {
-        console.error('[Visited Icon] Failed to create image from canvas');
+      
+      img.onerror = (e) => {
+        clearTimeout(loadTimeout);
+        console.error('[Visited Icon] Failed to create image from canvas', e);
+        console.error('[Visited Icon] Data URL length:', dataUrl.length);
         if (callback) callback(false);
       };
-      img.src = canvas.toDataURL('image/png');
+      
+      img.src = dataUrl;
     } catch (error) {
       console.error('[Visited Icon] Error generating cross icon:', error);
       if (callback) callback(false);
@@ -348,21 +394,44 @@ export function createMapLayers(map, popupManager) {
   }
 
   function addVisitedLayer() {
-    if (!map.getSource('gyms') || !map.isStyleLoaded() || !map.loaded()) {
+    if (!map.getSource('gyms')) {
+      console.warn('[Visited Layer] No gyms source found');
+      return;
+    }
+    
+    if (!map.isStyleLoaded() || !map.loaded()) {
+      console.log('[Visited Layer] Map not ready, waiting...');
+      const waitForMap = () => {
+        if (map.isStyleLoaded() && map.loaded()) {
+          addVisitedLayer();
+        } else {
+          map.once('style.load', waitForMap);
+          map.once('load', waitForMap);
+        }
+      };
+      waitForMap();
       return;
     }
 
     const iconName = VISITED_GYM_ICON.name;
     
     loadVisitedIcon((loaded) => {
-      if (!loaded || !map.hasImage(iconName)) {
+      if (!loaded) {
+        console.warn('[Visited Layer] Icon not loaded, retrying...');
         // Retry after a delay if icon isn't loaded yet
-        setTimeout(addVisitedLayer, 300);
+        setTimeout(addVisitedLayer, 500);
+        return;
+      }
+      
+      if (!map.hasImage(iconName)) {
+        console.warn('[Visited Layer] Icon not in map images, retrying...');
+        setTimeout(addVisitedLayer, 500);
         return;
       }
 
       // Remove existing layer if present
       if (map.getLayer('gyms-visited')) {
+        console.log('[Visited Layer] Removing existing layer');
         map.removeLayer('gyms-visited');
       }
 
@@ -374,13 +443,24 @@ export function createMapLayers(map, popupManager) {
         // First try to insert before gyms-labels (if it exists)
         if (map.getLayer('gyms-labels')) {
           beforeLayer = 'gyms-labels';
+          console.log('[Visited Layer] Inserting before gyms-labels');
         } else {
           // If no labels layer, try to insert before Protomaps label layers
           const protoBeforeLayer = findInsertionPoint();
           if (protoBeforeLayer) {
             beforeLayer = protoBeforeLayer;
+            console.log('[Visited Layer] Inserting before Protomaps layer:', protoBeforeLayer);
+          } else {
+            console.log('[Visited Layer] No beforeLayer, adding at end (on top)');
           }
-          // If no beforeLayer found, layer will be added at the end (on top)
+        }
+        
+        // Verify source has data with has_voted property
+        const source = map.getSource('gyms');
+        let hasVotedCount = 0;
+        if (source && source._data && source._data.features) {
+          hasVotedCount = source._data.features.filter(f => f.properties?.has_voted === true).length;
+          console.log(`[Visited Layer] Found ${hasVotedCount} gyms with has_voted=true`);
         }
         
         const layerConfig = {
@@ -393,10 +473,10 @@ export function createMapLayers(map, popupManager) {
               'interpolate',
               ['linear'],
               ['zoom'],
-              4, 0.5,
-              8, 0.6,
-              12, 0.7,
-              16, 0.8,
+              4, 0.6,
+              8, 0.7,
+              12, 0.85,
+              16, 1.0,
             ],
             'icon-anchor': 'center',
             'icon-allow-overlap': true,
@@ -404,6 +484,10 @@ export function createMapLayers(map, popupManager) {
           },
           paint: {
             'icon-opacity': 1.0,
+            // Add a slight halo effect for better visibility, especially on mobile
+            'icon-halo-color': 'rgba(255, 255, 255, 0.9)',
+            'icon-halo-width': 2,
+            'icon-halo-blur': 1,
           },
           filter: ['==', ['get', 'has_voted'], true],
           minzoom: MAP_CONFIG.CIRCLE_MIN_ZOOM,
@@ -414,9 +498,18 @@ export function createMapLayers(map, popupManager) {
         }
 
         map.addLayer(layerConfig);
-        console.log('[Visited Layer] Added visited layer', beforeLayer ? `before ${beforeLayer}` : 'at end');
+        console.log('[Visited Layer] Successfully added visited layer', {
+          beforeLayer: beforeLayer || 'end',
+          hasVotedCount,
+          iconName,
+          iconExists: map.hasImage(iconName)
+        });
       } catch (error) {
-        console.error('[Visited Layer] Error:', error);
+        console.error('[Visited Layer] Error adding layer:', error);
+        console.error('[Visited Layer] Error details:', {
+          message: error.message,
+          stack: error.stack
+        });
       }
     });
   }
