@@ -1,0 +1,420 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: 'Excalifont', 'Xiaolai', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans',
+    'Helvetica Neue', Arial, sans-serif;
+}
+body { overflow: hidden; }
+/* Hand-drawn fonts */
+@font-face {
+  font-family: 'Excalifont';
+  src: url('/fonts/Excalifont-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Xiaolai';
+  src: url('/fonts/Xiaolai-Regular.woff2') format('woff2'),
+       url('/fonts/Xiaolai-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+
+#map {
+  position: absolute;
+  inset: 0;
+}
+
+/* .topbar removed */
+
+/* brand/controls removed */
+
+input[type="email"],
+input[type="text"] {
+  height: 30px;
+  min-width: 220px;
+  padding: 4px 8px;
+  border: 1px solid #d1d1d6;
+  border-radius: 6px;
+  color: #1d1d1f;
+}
+
+/* Hide built-in geolocate control since we use a custom button */
+.maplibregl-ctrl-geolocate { display: none !important; }
+
+/* Force popup to use hand-drawn fonts */
+.maplibregl-popup-content, .maplibregl-popup-content * {
+  font-family: 'Excalifont', 'Xiaolai', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans',
+    'Helvetica Neue', Arial, sans-serif !important;
+}
+
+/* Custom scrollbar for gym list */
+#gymList::-webkit-scrollbar {
+  width: 6px;
+}
+
+#gymList::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#gymList::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+#gymList::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* Gym popup styling */
+.maplibregl-popup-content {
+  padding: 0 !important;
+  border-radius: 0.5rem !important;
+}
+
+.maplibregl-popup-close-button {
+  color: #6b7280 !important;
+  font-size: 20px !important;
+  padding: 4px 8px !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  border-radius: 0.375rem !important;
+  transition: all 0.2s !important;
+}
+
+.maplibregl-popup-close-button:hover {
+  background: rgba(255, 255, 255, 1) !important;
+  color: #374151 !important;
+}
+
+.gym-popup-detail-btn {
+  user-select: none;
+}
+
+/* Mobile responsive improvements */
+@media (max-width: 640px) {
+  /* Improve touch targets */
+  button, a, [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Better scrolling on mobile */
+  #gymList {
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Gym list collapsed state on mobile */
+  #gymListContainer {
+    max-height: fit-content;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  #gymListWrapper {
+    transition: max-height 0.3s ease-in-out, width 0.3s ease-in-out;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  
+  /* Ensure proper width constraints on mobile */
+  #gymListContainer {
+    min-width: fit-content;
+  }
+  
+  /* Gym list items - ensure proper scrolling */
+  #gymList {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    flex: 1;
+    min-height: 0;
+  }
+  
+  /* Ensure header stays visible */
+  #gymListToggleExpanded,
+  #gymListToggleCollapsed {
+    flex-shrink: 0;
+  }
+  
+  /* Desktop expanded view */
+  .hidden.sm\\:flex {
+    flex-shrink: 0;
+  }
+  
+  /* Toggle button styling */
+  #gymListToggle {
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  #gymListToggle:active {
+    opacity: 0.8;
+  }
+  
+  /* Popup adjustments for mobile */
+  .maplibregl-popup {
+    max-width: calc(100vw - 16px) !important;
+    z-index: 25 !important; /* Make sure popup is above other elements */
+  }
+  
+  .maplibregl-popup-content {
+    max-width: calc(100vw - 16px) !important;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2) !important; /* Stronger shadow for visibility */
+  }
+  
+  /* Larger close button on mobile */
+  .maplibregl-popup-close-button {
+    width: 32px !important;
+    height: 32px !important;
+    font-size: 22px !important;
+    padding: 4px !important;
+  }
+  
+  /* Prevent text selection on buttons */
+  button {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+  
+  /* Better input handling on mobile */
+  input, textarea {
+    font-size: 16px !important; /* Prevents zoom on iOS */
+  }
+}
+
+/* Touch manipulation improvements */
+.touch-manipulation {
+  touch-action: manipulation;
+}
+
+/* Prevent double-tap zoom on buttons */
+@media (max-width: 640px) {
+  button, a {
+    touch-action: manipulation;
+  }
+}
+
+/* Buy Me a Coffee button - smooth expandable animation */
+.buy-me-coffee-btn {
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0.5rem;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), 
+              padding 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.2s ease,
+              box-shadow 0.3s ease;
+  will-change: width, padding;
+}
+
+.buy-me-coffee-btn:hover {
+  width: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  transform: scale(1.02);
+}
+
+.buy-me-coffee-btn:active {
+  transform: scale(0.98);
+}
+
+.buy-me-coffee-btn .coffee-icon {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: inline-block;
+}
+
+.buy-me-coffee-btn:hover .coffee-icon {
+  transform: rotate(15deg) scale(1.1);
+}
+
+.buy-me-coffee-btn .coffee-text,
+.buy-me-coffee-btn .coffee-text-mobile {
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1) 0.1s,
+              transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) 0.1s;
+  transform: translateX(-8px);
+  will-change: opacity, transform;
+}
+
+.buy-me-coffee-btn:hover .coffee-text,
+.buy-me-coffee-btn:hover .coffee-text-mobile {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* Mobile: keep buttons compact (icon only), disable hover expansion */
+@media (max-width: 640px) {
+  .buy-me-coffee-btn {
+    width: 2.5rem !important;
+    padding: 0.5rem !important;
+  }
+  
+  .buy-me-coffee-btn:hover {
+    width: 2.5rem !important;
+    padding: 0.5rem !important;
+    transform: none !important;
+  }
+  
+  .buy-me-coffee-btn:hover .coffee-icon {
+    transform: none !important;
+  }
+  
+  .buy-me-coffee-btn .coffee-text,
+  .buy-me-coffee-btn .coffee-text-mobile {
+    display: none !important;
+  }
+}
+
+/* Feedback button - similar to coffee button but with blue gradient */
+.feedback-btn {
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0.5rem;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), 
+              padding 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.2s ease,
+              box-shadow 0.3s ease;
+  will-change: width, padding;
+}
+
+.feedback-btn:hover {
+  width: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  transform: scale(1.02);
+}
+
+.feedback-btn:active {
+  transform: scale(0.98);
+}
+
+.feedback-btn .feedback-icon {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: inline-block;
+}
+
+.feedback-btn:hover .feedback-icon {
+  transform: rotate(15deg) scale(1.1);
+}
+
+.feedback-btn .feedback-text,
+.feedback-btn .feedback-text-mobile {
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1) 0.1s,
+              transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) 0.1s;
+  transform: translateX(-8px);
+  will-change: opacity, transform;
+}
+
+.feedback-btn:hover .feedback-text,
+.feedback-btn:hover .feedback-text-mobile {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* Mobile: keep buttons compact (icon only), disable hover expansion */
+@media (max-width: 640px) {
+  .feedback-btn {
+    width: 2.5rem !important;
+    padding: 0.5rem !important;
+  }
+  
+  .feedback-btn:hover {
+    width: 2.5rem !important;
+    padding: 0.5rem !important;
+    transform: none !important;
+  }
+  
+  .feedback-btn:hover .feedback-icon {
+    transform: none !important;
+  }
+  
+  .feedback-btn .feedback-text,
+  .feedback-btn .feedback-text-mobile {
+    display: none !important;
+  }
+}
+
+/* Hide unwanted feedback types in feedbackfin widget */
+.feedbackfin__type-button[data-type="bug"],
+.feedbackfin__type-button[data-type="feature"],
+.feedbackfin__type-button[data-type="other"] {
+  display: none !important;
+}
+
+button[data-feedbackfin-type="bug"],
+button[data-feedbackfin-type="feature"],
+button[data-feedbackfin-type="other"] {
+  display: none !important;
+}
+
+[data-type="bug"],
+[data-type="feature"],
+[data-type="other"] {
+  display: none !important;
+}

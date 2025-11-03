@@ -1,0 +1,48 @@
+{
+  "name": "maptiler-maplibre-webapp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "scripts": {
+    "dev": "node server.js",
+    "dev:vite": "vite",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:vite\"",
+    "build": "vite build",
+    "vercel-build": "vite build",
+    "preview": "vite preview",
+    "start": "NODE_ENV=production node server.js",
+    "fetch:gyms": "node scripts/fetch_gyms_overpass.mjs --mode=grid --cell=10 --concurrency=2 --delay=500 --out=public/gyms.json",
+    "fetch:gyms:single": "node scripts/fetch_gyms_overpass.mjs --mode=single --out=public/gyms.json",
+    "fetch:gyms:bbox": "node scripts/fetch_gyms_overpass.mjs --mode=bbox --bbox=-125,24,-66,50 --out=public/gyms_us.json",
+    "fetch:gyms:china": "node scripts/fetch_china_gym.js",
+    "dedupe:gyms:china": "node scripts/dedupe_china_gyms.js",
+    "db:import": "node scripts/db_setup_and_import.js",
+    "db:random-stink": "node scripts/add_random_stink.js",
+    "fetch:gyms:world:google": "node scripts/fetch_world_gyms_google.js",
+    "fetch:gyms:world:google:countries": "node scripts/fetch_world_gyms_google_by_country.js",
+    "build:seeds:osm": "node scripts/build_country_seeds_osm.mjs",
+    "enrich:gym:locations": "node scripts/enrich_gym_location_data.js"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "pg": "^8.12.0",
+    "supercluster": "^8.0.1",
+    "zustand": "^4.5.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.16",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^9.2.1",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.18",
+    "terser": "^5.44.0",
+    "vite": "^7.1.12"
+  }
+}
