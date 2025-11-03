@@ -52,12 +52,14 @@ export function createMapLayers(map, popupManager) {
     const iconName = VISITED_GYM_ICON.name;
     
     if (visitedIconLoaded || map.hasImage(iconName)) {
+      console.log('[Visited Icon] Icon already loaded');
       if (callback) callback(true);
       return;
     }
     
     // Wait for style to be fully loaded before adding images
     if (!map.isStyleLoaded() || !map.loaded()) {
+      console.log('[Visited Icon] Waiting for map to load...');
       const waitForStyle = () => {
         if (map.isStyleLoaded() && map.loaded()) {
           loadVisitedIcon(callback);
@@ -71,12 +73,14 @@ export function createMapLayers(map, popupManager) {
     }
     
     try {
+      console.log('[Visited Icon] Generating cross icon...');
       const canvas = generateCrossIcon();
       const img = new Image();
       img.onload = () => {
         try {
           map.addImage(iconName, img);
           visitedIconLoaded = true;
+          console.log('[Visited Icon] Icon added successfully');
           if (callback) callback(true);
         } catch (err) {
           console.error('[Visited Icon] Error adding image:', err);
@@ -363,7 +367,21 @@ export function createMapLayers(map, popupManager) {
       }
 
       try {
-        const beforeLayer = findInsertionPoint();
+        // Insert visited layer after gyms-circles but before gyms-labels (if exists)
+        // This ensures the red cross appears on top of the circle markers
+        let beforeLayer = null;
+        
+        // First try to insert before gyms-labels (if it exists)
+        if (map.getLayer('gyms-labels')) {
+          beforeLayer = 'gyms-labels';
+        } else {
+          // If no labels layer, try to insert before Protomaps label layers
+          const protoBeforeLayer = findInsertionPoint();
+          if (protoBeforeLayer) {
+            beforeLayer = protoBeforeLayer;
+          }
+          // If no beforeLayer found, layer will be added at the end (on top)
+        }
         
         const layerConfig = {
           id: 'gyms-visited',
@@ -396,6 +414,7 @@ export function createMapLayers(map, popupManager) {
         }
 
         map.addLayer(layerConfig);
+        console.log('[Visited Layer] Added visited layer', beforeLayer ? `before ${beforeLayer}` : 'at end');
       } catch (error) {
         console.error('[Visited Layer] Error:', error);
       }
@@ -483,8 +502,11 @@ export function createMapLayers(map, popupManager) {
       addLabelsLayer();
       setupEventHandlers(onClick);
 
-      // Add visited layer immediately - icon should already be loaded
-      addVisitedLayer();
+      // Add visited layer after circles and labels are added
+      // Use a small delay to ensure circles layer exists before adding visited layer on top
+      setTimeout(() => {
+        addVisitedLayer();
+      }, 100);
     } catch (error) {
       console.error('Error adding gyms layers:', error);
       // Retry if style wasn't ready
