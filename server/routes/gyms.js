@@ -811,11 +811,18 @@ export function createGymsRouter(pool, hasPassword, verifyPassword) {
       
       const userId = userResult.rows.length > 0 ? userResult.rows[0].id : null;
       
-      // Fetch all unique gym IDs the user has voted on (check both user_id and username for backwards compatibility)
+      // Fetch all unique gym IDs the user has voted on
+      // Include gyms where user voted on main fields (smell, difficulty, etc.) OR utilities
+      // This ensures a gym is marked as visited if user voted on ANY field
       const query = `
         SELECT DISTINCT gym_id
-        FROM gym_votes
-        WHERE (user_id = $1 OR username = $2)
+        FROM (
+          SELECT gym_id FROM gym_votes
+          WHERE (user_id = $1 OR username = $2)
+          UNION
+          SELECT gym_id FROM gym_utility_votes
+          WHERE (user_id = $1 OR username = $2)
+        ) AS all_voted_gyms
       `;
       
       const { rows } = await pool.query(query, [userId, username]);
