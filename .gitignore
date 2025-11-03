@@ -26,3 +26,6 @@ yarn-error.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# Large data files
+data/seed/
