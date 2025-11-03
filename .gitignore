@@ -29,3 +29,4 @@ Thumbs.db
 
 # Large data files
 data/seed/
+.vercel

@@ -28,6 +28,7 @@
     "enrich:gym:locations": "node scripts/enrich_gym_location_data.js"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.0.2",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
