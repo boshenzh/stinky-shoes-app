@@ -114,12 +114,31 @@ export function createMapManager(config) {
     };
   }
 
+  // Verify map container exists before creating map
+  const mapContainer = document.getElementById('map');
+  if (!mapContainer) {
+    throw new Error('Map container with id="map" not found in DOM');
+  }
+  
+  if (mapContainer.offsetWidth === 0 || mapContainer.offsetHeight === 0) {
+    console.warn('[MapManager] Map container has zero dimensions, map may not render properly');
+  }
+
   const map = new maplibregl.Map({
     container: 'map',
     style: styleUrl,
     center: MAP_CONFIG.DEFAULT_CENTER,
     zoom: MAP_CONFIG.DEFAULT_ZOOM,
     attributionControl: true,
+  });
+  
+  // Add error handlers for map loading
+  map.on('error', (e) => {
+    console.error('[MapManager] Map error:', e.error);
+  });
+  
+  map.on('styleimagemissing', (e) => {
+    console.warn('[MapManager] Missing image:', e.id);
   });
 
   // Initialize controls

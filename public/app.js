@@ -9,6 +9,8 @@ import { useAppStore, useAuth } from './store/index.js';
 import { createGymListToggle } from './components/GymListToggle.js';
 import { createGymListSort } from './components/GymListSort.js';
 import { inject } from '@vercel/analytics';
+import { showLoading, hideLoading } from './components/LoadingIndicator.js';
+import { toast } from './components/Toast.js';
 
 // Initialize Vercel Analytics
 inject();
@@ -20,8 +22,44 @@ function initGymListToggle() {
 
 async function initApp() {
   try {
+    // Show loading indicator
+    showLoading('Initializing map...');
+    
+    // Ensure map container exists and is visible
+    const mapContainer = document.getElementById('map');
+    if (!mapContainer) {
+      console.error('[App] Map container not found!');
+      hideLoading();
+      toast.error('Map container not found. Please refresh the page.');
+      return;
+    }
+    
+    // Ensure container has dimensions
+    if (mapContainer.offsetWidth === 0 || mapContainer.offsetHeight === 0) {
+      console.warn('[App] Map container has zero dimensions, waiting for layout...');
+      // Wait a bit for layout to settle
+      await new Promise(resolve => setTimeout(resolve, 200));
+      if (mapContainer.offsetWidth === 0 || mapContainer.offsetHeight === 0) {
+        console.error('[App] Map container still has zero dimensions');
+        hideLoading();
+        toast.error('Map container is not visible. Please refresh the page.');
+        return;
+      }
+    }
+    
+    console.log('[App] Initializing app...');
+    showLoading('Loading map configuration...');
+    
     // Get Protomaps API key from config (optional - can use demo PMTiles without key)
-    const config = await getConfig();
+    let config;
+    try {
+      config = await getConfig();
+    } catch (error) {
+      console.error('[App] Failed to fetch config, using defaults:', error);
+      config = { protomapsKey: '' }; // Use default fallback
+    }
+    
+    showLoading('Creating map...');
     const mapManager = createMapManager({ 
       protomapsApiKey: config.protomapsKey || ''
     });
@@ -149,7 +187,7 @@ async function initApp() {
           accountModal.show();
         } else {
           console.error('Account modal not initialized');
-          alert('Account modal not initialized. Please refresh the page.');
+          toast.error('Account modal not initialized. Please refresh the page.');
         }
       } else {
         // No user_id, show login modal
@@ -181,17 +219,29 @@ async function initApp() {
     // Load gyms in viewport first (much faster than loading all 17k+ gyms)
     console.log('[App] Fetching gyms in viewport...');
     const loadGymsForViewport = async () => {
+      showLoading('Loading gyms...');
       const startTime = performance.now();
-      const bounds = mapManager.map.getBounds();
-      let geojson = await fetchGymsByBbox(bounds);
-      const loadTime = performance.now() - startTime;
-      console.log(`[App] Loaded ${geojson.features.length} gyms in viewport in ${loadTime.toFixed(0)}ms`);
+      let geojson;
       
-      if (!geojson || !geojson.features || geojson.features.length === 0) {
-        console.warn('[App] WARNING: No gyms in viewport! This could indicate:');
-        console.warn('[App] 1. Database connection issue');
-        console.warn('[App] 2. Empty database in production');
-        console.warn('[App] 3. API endpoint not working');
+      try {
+        const bounds = mapManager.map.getBounds();
+        geojson = await fetchGymsByBbox(bounds);
+        const loadTime = performance.now() - startTime;
+        console.log(`[App] Loaded ${geojson.features.length} gyms in viewport in ${loadTime.toFixed(0)}ms`);
+        
+        if (!geojson || !geojson.features || geojson.features.length === 0) {
+          hideLoading();
+          console.warn('[App] WARNING: No gyms in viewport! This could indicate:');
+          console.warn('[App] 1. Database connection issue');
+          console.warn('[App] 2. Empty database in production');
+          console.warn('[App] 3. API endpoint not working');
+          toast.warning('No gyms found in this area. Try zooming out or moving the map.');
+          return;
+        }
+      } catch (error) {
+        hideLoading();
+        console.error('[App] Error loading gyms:', error);
+        toast.error('Failed to load gyms. Please try again.');
         return;
       }
 
@@ -223,18 +273,67 @@ async function initApp() {
         const layerTime = performance.now() - layerStartTime;
         console.log(`[App] Added ${geojson.features.length} markers to map in ${layerTime.toFixed(0)}ms`);
         gymList.setAll(all);
+        hideLoading();
       } catch (error) {
+        hideLoading();
         console.error('[App] Error adding layers:', error);
+        toast.error('Failed to display gyms on map. Please refresh the page.');
       }
     };
 
     // Wait for map to be ready before loading gyms
     const addLayersWhenReady = () => {
-      if (mapManager.map.isStyleLoaded() && mapManager.map.loaded()) {
+      // Check if map is ready
+      const isReady = mapManager.map.isStyleLoaded() && mapManager.map.loaded();
+      
+      if (isReady) {
+        console.log('[App] Map is ready, loading gyms...');
         loadGymsForViewport();
       } else {
-        mapManager.map.once('load', loadGymsForViewport);
-        mapManager.map.once('style.load', loadGymsForViewport);
+        showLoading('Waiting for map to load...');
+        console.log('[App] Waiting for map to load...');
+        
+        // Wait for both style.load and load events (style.load is fired when style is loaded, load is fired when map is ready)
+        let styleLoaded = false;
+        let mapLoaded = false;
+        
+        const checkAndLoad = () => {
+          if (styleLoaded && mapLoaded) {
+            console.log('[App] Map fully loaded, loading gyms...');
+            loadGymsForViewport();
+          }
+        };
+        
+        mapManager.map.once('style.load', () => {
+          console.log('[App] Map style loaded');
+          styleLoaded = true;
+          showLoading('Map style loaded, preparing gyms...');
+          checkAndLoad();
+        });
+        
+        mapManager.map.once('load', () => {
+          console.log('[App] Map loaded');
+          mapLoaded = true;
+          checkAndLoad();
+        });
+        
+        // Fallback timeout in case events don't fire
+        setTimeout(() => {
+          if (!styleLoaded || !mapLoaded) {
+            console.warn('[App] Map load timeout, attempting to load gyms anyway...');
+            // Check if map is at least partially ready
+            if (mapManager.map.isStyleLoaded() || mapManager.map.loaded()) {
+              loadGymsForViewport();
+            } else {
+              // Retry once more after another delay
+              setTimeout(() => {
+                console.log('[App] Retrying gym load...');
+                showLoading('Retrying...');
+                loadGymsForViewport();
+              }, 1000);
+            }
+          }
+        }, 5000); // 5 second timeout
       }
     };
     
@@ -363,9 +462,20 @@ async function initApp() {
     }
 
   } catch (e) {
+    hideLoading();
     console.error('Error initializing app', e);
+    toast.error('Failed to initialize app. Please refresh the page.');
   }
 }
 
-window.addEventListener('load', initApp);
+// Initialize app when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    // Small delay to ensure all elements are rendered
+    setTimeout(initApp, 100);
+  });
+} else {
+  // DOM already loaded
+  setTimeout(initApp, 100);
+}
 

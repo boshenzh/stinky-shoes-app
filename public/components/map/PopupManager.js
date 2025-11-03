@@ -5,6 +5,7 @@ import { haversineMeters } from '../../lib/geo.js';
 import { fetchGymById } from '../../services/api.js';
 import { STYLE_COLORS, MAP_CONFIG } from '../../lib/constants.js';
 import { useAuth } from '../../store/index.js';
+import { toast } from '../Toast.js';
 
 // Constants
 const UTILITY_NAMES = {
@@ -506,7 +507,7 @@ export function createPopupManager(map, passwordModal = null) {
           
           passwordModal.show('register');
         } else {
-          alert('Please log in to vote');
+          toast.warning('Please log in to vote');
         }
       } else {
         // User is logged in - show vote panel directly

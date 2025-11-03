@@ -1,6 +1,7 @@
 // Account Modal - shows user stats, regions, farthest gyms, and password setup
 import { fetchUserStats } from '../services/api.js';
 import { useAuth } from '../store/index.js';
+import { toast } from './Toast.js';
 
 export function createAccountModal() {
   const modal = document.getElementById('accountModal');
@@ -109,7 +110,7 @@ export function createAccountModal() {
     const auth = useAuth();
     
     if (!auth.isLoggedIn || !auth.userId) {
-      alert('Please log in to view your account');
+      toast.warning('Please log in to view your account');
       return;
     }
     
@@ -224,7 +225,7 @@ export function createAccountModal() {
       
       // Show more detailed error message
       const errorMsg = error.message || 'Unknown error';
-      alert(`Failed to load account information: ${errorMsg}. Check console for details.`);
+      toast.error(`Failed to load account information: ${errorMsg}`);
       
       // Still show basic info
       if (usernameEl) usernameEl.textContent = username;

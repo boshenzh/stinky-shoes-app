@@ -2,6 +2,7 @@
 import { ensureUsername, getPassword } from '../../lib/username.js';
 import { submitVote, fetchMyVote, fetchMyUtilityVotes, submitUtilityVote } from '../../services/api.js';
 import { STYLE_COLORS } from '../../lib/constants.js';
+import { toast } from '../Toast.js';
 
 const UTILITIES = {
   training: [
@@ -26,7 +27,7 @@ export function createVotePanel(popupManager) {
     // Get username first
     const username = ensureUsername();
     if (!username) {
-      alert('Please enter a username to vote');
+      toast.error('Please enter a username to vote');
       return;
     }
 
@@ -64,6 +65,9 @@ export function createVotePanel(popupManager) {
       defaultUtilityVotes[util.key] = null;
     });
     
+    // Store initial utility values to track changes
+    const initialUtilityVotes = {};
+    
     // Track which fields the user has actually interacted with
     const interactedFields = {
       smell: false,
@@ -71,13 +75,14 @@ export function createVotePanel(popupManager) {
       parking: false,
       pet: false,
       styles: false,
+      utilities: false,
     };
 
-    // Try to fetch previous vote and utility votes
-    try {
-      const previousVote = await fetchMyVote(gym.id, username);
-      const previousUtilityVotes = await fetchMyUtilityVotes(gym.id, username);
-      defaultUtilityVotes = { ...defaultUtilityVotes, ...previousUtilityVotes };
+      // Try to fetch previous vote and utility votes
+      try {
+        const previousVote = await fetchMyVote(gym.id, username);
+        const previousUtilityVotes = await fetchMyUtilityVotes(gym.id, username);
+        defaultUtilityVotes = { ...defaultUtilityVotes, ...previousUtilityVotes };
       
       if (previousVote) {
         // Prefill with previous vote values and update initial values
@@ -341,7 +346,13 @@ export function createVotePanel(popupManager) {
     // Set content and open vote panel
     const votePanel = document.getElementById('votePanel');
     const votePanelContent = document.getElementById('votePanelContent');
+    const votePanelHeader = document.querySelector('#votePanel .text-sm.font-semibold.text-gray-800');
     if (!votePanel || !votePanelContent) return;
+
+    // Update header with gym name
+    if (votePanelHeader && gym && gym.name) {
+      votePanelHeader.textContent = `✏️ Vote for ${gym.name}!`;
+    }
 
     votePanelContent.innerHTML = voteFormHTML;
     votePanel.classList.remove('hidden');
@@ -473,17 +484,25 @@ export function createVotePanel(popupManager) {
 
     renderPieChart();
 
-    // Track utility votes (updated in real-time as user clicks)
+    // Initialize initial utility values for comparison (after defaults are set)
+    Object.keys(defaultUtilityVotes).forEach(key => {
+      initialUtilityVotes[key] = defaultUtilityVotes[key];
+    });
+
+    // Track utility votes (updated locally as user clicks, submitted later)
     const utilityVotes = { ...defaultUtilityVotes };
 
-    // Handle utility vote buttons
+    // Handle utility vote buttons (just update local state, no immediate submission)
     const utilityVoteBtns = votePanelContent.querySelectorAll('.utility-vote-btn');
     utilityVoteBtns.forEach(btn => {
-      btn.addEventListener('click', async (e) => {
+      btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const utilityKey = btn.getAttribute('data-utility');
         const voteType = btn.getAttribute('data-vote');
         const voteValue = voteType === 'upvote' ? 1 : -1;
+        
+        // Mark that user has interacted with utilities
+        interactedFields.utilities = true;
         
         // Check if clicking the same vote (toggle off)
         if (utilityVotes[utilityKey] === voteValue) {
@@ -491,36 +510,24 @@ export function createVotePanel(popupManager) {
         } else {
           utilityVotes[utilityKey] = voteValue;
         }
-
-        try {
-          await submitUtilityVote(gym.id, utilityKey, voteType === 'upvote' ? 'upvote' : 'downvote', username, getPassword());
-          
-          // Update button states
-          const upvoteBtn = votePanelContent.querySelector(`.utility-upvote[data-utility="${utilityKey}"]`);
-          const downvoteBtn = votePanelContent.querySelector(`.utility-downvote[data-utility="${utilityKey}"]`);
-          
-          // Remove active states
-          upvoteBtn?.classList.remove('active', 'bg-green-100', 'border-green-400', 'text-green-700');
-          upvoteBtn?.classList.add('bg-white', 'border-gray-300', 'text-gray-400');
-          downvoteBtn?.classList.remove('active', 'bg-red-100', 'border-red-400', 'text-red-700');
-          downvoteBtn?.classList.add('bg-white', 'border-gray-300', 'text-gray-400');
-          
-          // Apply active state based on current vote
-          if (utilityVotes[utilityKey] === 1) {
-            upvoteBtn?.classList.add('active', 'bg-green-100', 'border-green-400', 'text-green-700');
-            upvoteBtn?.classList.remove('bg-white', 'border-gray-300', 'text-gray-400');
-          } else if (utilityVotes[utilityKey] === -1) {
-            downvoteBtn?.classList.add('active', 'bg-red-100', 'border-red-400', 'text-red-700');
-            downvoteBtn?.classList.remove('bg-white', 'border-gray-300', 'text-gray-400');
-          }
-          
-          // Refresh popup to show updated utilities
-          await popupManager.refreshPopupForGym(gym.id);
-        } catch (err) {
-          console.error('Failed to submit utility vote:', err);
-          // Revert the vote on error
-          utilityVotes[utilityKey] = defaultUtilityVotes[utilityKey];
-          alert(err.message || 'Failed to submit utility vote. Please try again.');
+        
+        // Update button states visually (no API call yet)
+        const upvoteBtn = votePanelContent.querySelector(`.utility-upvote[data-utility="${utilityKey}"]`);
+        const downvoteBtn = votePanelContent.querySelector(`.utility-downvote[data-utility="${utilityKey}"]`);
+        
+        // Remove active states
+        upvoteBtn?.classList.remove('active', 'bg-green-100', 'border-green-400', 'text-green-700');
+        upvoteBtn?.classList.add('bg-white', 'border-gray-300', 'text-gray-400');
+        downvoteBtn?.classList.remove('active', 'bg-red-100', 'border-red-400', 'text-red-700');
+        downvoteBtn?.classList.add('bg-white', 'border-gray-300', 'text-gray-400');
+        
+        // Apply active state based on current vote
+        if (utilityVotes[utilityKey] === 1) {
+          upvoteBtn?.classList.add('active', 'bg-green-100', 'border-green-400', 'text-green-700');
+          upvoteBtn?.classList.remove('bg-white', 'border-gray-300', 'text-gray-400');
+        } else if (utilityVotes[utilityKey] === -1) {
+          downvoteBtn?.classList.add('active', 'bg-red-100', 'border-red-400', 'text-red-700');
+          downvoteBtn?.classList.remove('bg-white', 'border-gray-300', 'text-gray-400');
         }
       });
     });
@@ -530,7 +537,7 @@ export function createVotePanel(popupManager) {
     submitBtn?.addEventListener('click', async () => {
       const username = ensureUsername();
       if (!username) {
-        alert('Please enter a username to vote');
+        toast.error('Please enter a username to vote');
         return;
       }
 
@@ -589,19 +596,46 @@ export function createVotePanel(popupManager) {
         }
       }
       
-      // If no fields were interacted with, don't submit
+      // Check if user has interacted with any fields (including utilities)
       const hasAnyData = Object.keys(voteData).some(key => 
         key !== 'username' && key !== 'password' && voteData[key] !== undefined
       );
       
-      if (!hasAnyData) {
-        alert('Please interact with at least one field to submit a vote.');
+      // Check if utilities have changed
+      const utilitiesChanged = Object.keys(utilityVotes).some(key => 
+        utilityVotes[key] !== initialUtilityVotes[key]
+      );
+      
+      // Allow submission if user has interacted with any fields OR utilities
+      if (!hasAnyData && !utilitiesChanged) {
+        toast.warning('Please interact with at least one field to submit a vote.');
         return;
       }
 
       try {
-        const result = await submitVote(gym.id, voteData);
-        console.log('Vote submitted successfully:', result);
+        // Submit main vote data first (smell, difficulty, etc.)
+        if (hasAnyData) {
+          const result = await submitVote(gym.id, voteData);
+          console.log('Vote submitted successfully:', result);
+        }
+        
+        // Submit utility votes that changed
+        const utilityVotesToSubmit = [];
+        for (const [utilityKey, voteValue] of Object.entries(utilityVotes)) {
+          // Only submit if value changed from initial
+          if (voteValue !== initialUtilityVotes[utilityKey]) {
+            const voteType = voteValue === 1 ? 'upvote' : 'downvote';
+            utilityVotesToSubmit.push(
+              submitUtilityVote(gym.id, utilityKey, voteType, username, getPassword())
+            );
+          }
+        }
+        
+        // Submit all utility votes in parallel
+        if (utilityVotesToSubmit.length > 0) {
+          await Promise.all(utilityVotesToSubmit);
+          console.log(`Submitted ${utilityVotesToSubmit.length} utility votes`);
+        }
         
         // Close vote panel
         const votePanelEl = document.getElementById('votePanel');
@@ -617,10 +651,10 @@ export function createVotePanel(popupManager) {
         await popupManager.refreshPopupForGym(gym.id);
         
         // Show success message after popup is refreshed
-        alert('Vote submitted successfully!');
+        toast.success('Vote submitted successfully!');
       } catch (err) {
         console.error('Failed to submit vote:', err);
-        alert(err.message || 'Failed to submit vote. Please try again.');
+        toast.error(err.message || 'Failed to submit vote. Please try again.');
       }
     });
 
