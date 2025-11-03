@@ -142,7 +142,7 @@ export function createMapManager(config) {
   });
 
   // Initialize controls
-  const controls = createMapControls(map);
+  const controls = createMapControls(map, protomapsApiKey);
 
   // Initialize popup manager and vote panel (vote panel needs popup manager reference)
   const popupManager = createPopupManager(map);

@@ -9,9 +9,9 @@ export const HEATMAP_COLORS = {
 };
 
 export const HEATMAP_CONFIG = {
-  INTENSITY: 1.0, // Overall intensity of the heatmap
-  RADIUS: 50, // Radius of influence for each point in pixels
-  OPACITY: 0.8, // Overall opacity of the heatmap
+  INTENSITY: 0.8, // Overall intensity of the heatmap
+  RADIUS: 60, // Radius of influence for each point in pixels
+  OPACITY: 0.7, // Overall opacity of the heatmap
   // Color stops for heatmap intensity (0 = transparent/no data, 1 = maximum intensity)
   // First stop must be transparent so areas with no data don't show any color
   COLOR_STOPS: [

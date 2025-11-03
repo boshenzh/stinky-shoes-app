@@ -364,6 +364,13 @@ async function initApp() {
 
     mapManager.map.on('moveend', handleViewportChange);
     mapManager.map.on('zoomend', handleViewportChange);
+    
+    // Listen for style changes and re-add custom layers
+    window.addEventListener('mapstylechange', () => {
+      console.log('[App] Map style changed, reloading gyms...');
+      // Re-load gyms when style changes to ensure custom layers are re-added
+      loadGymsForViewport(false);
+    });
 
     // Refresh data function (refetches gyms in viewport and updates vote data)
     async function refreshData() {
