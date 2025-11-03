@@ -220,13 +220,13 @@ export function createGymList(map, getSmell) {
       if ($iconCollapsed) $iconCollapsed.textContent = '🧗';
     }
 
-    // Show/hide container - only show in stinky mode or if there are gyms in difficulty mode
+    // Show/hide container - always show unless there are no gyms in view at all
     if ($container) {
-      const shouldShow = currentMode === 'stinky' || (currentMode === 'difficulty' && displayGyms.length > 0);
-      $container.classList.toggle('hidden', !shouldShow || displayGyms.length === 0);
+      const hasGymsInView = gymsInView.length > 0;
+      $container.classList.toggle('hidden', !hasGymsInView);
       
-      // On mobile, ensure list is collapsed if hidden
-      if (!shouldShow || displayGyms.length === 0) {
+      // On mobile, collapse list if no gyms
+      if (!hasGymsInView) {
         const $list = document.getElementById('gymList');
         const $toggleIcon = document.getElementById('gymListToggleIcon');
         if ($list && window.innerWidth < 640) {
@@ -236,9 +236,14 @@ export function createGymList(map, getSmell) {
       }
     }
 
+    // Show appropriate message if no gyms to display in current mode
     if (displayGyms.length === 0) {
       const regionLabel = isCountryLevel ? regionCountry : mostCommonRegion;
-      $list.innerHTML = `<div class="p-4 text-sm text-gray-500 text-center">No gyms in ${regionLabel}</div>`;
+      if (currentMode === 'difficulty') {
+        $list.innerHTML = `<div class="p-4 text-sm text-gray-500 text-center">No gyms rated with difficulty in ${regionLabel} yet</div>`;
+      } else {
+        $list.innerHTML = `<div class="p-4 text-sm text-gray-500 text-center">No gyms in ${regionLabel}</div>`;
+      }
       return;
     }
 

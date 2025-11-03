@@ -56,18 +56,22 @@ export function createMapLayers(map, popupManager) {
       return;
     }
     
-    if (!map.isStyleLoaded()) {
-      map.once('style.load', () => {
-        setTimeout(() => loadVisitedIcon(callback), 100);
-      });
+    // Wait for style to be fully loaded before adding images
+    if (!map.isStyleLoaded() || !map.loaded()) {
+      const waitForStyle = () => {
+        if (map.isStyleLoaded() && map.loaded()) {
+          loadVisitedIcon(callback);
+        } else {
+          map.once('style.load', waitForStyle);
+          map.once('load', waitForStyle);
+        }
+      };
+      waitForStyle();
       return;
     }
     
     try {
-      // Generate cross icon using canvas
       const canvas = generateCrossIcon();
-      
-      // Convert canvas to ImageData/HTMLImageElement
       const img = new Image();
       img.onload = () => {
         try {
@@ -83,7 +87,6 @@ export function createMapLayers(map, popupManager) {
         console.error('[Visited Icon] Failed to create image from canvas');
         if (callback) callback(false);
       };
-      // Convert canvas to data URL and load as image
       img.src = canvas.toDataURL('image/png');
     } catch (error) {
       console.error('[Visited Icon] Error generating cross icon:', error);
@@ -164,10 +167,57 @@ export function createMapLayers(map, popupManager) {
     });
   }
 
+  // Find insertion point for custom layers - insert before Protomaps label layers
+  function findInsertionPoint() {
+    // Try to find Protomaps label layers - insert before them
+    const labelLayerIds = [
+      'address_label',
+      'water_waterway_label',
+      'roads_labels_minor',
+      'water_label_ocean',
+      'earth_label_islands',
+      'water_label_lakes',
+      'roads_labels_major',
+      'pois',
+      'places_subplace',
+      'places_region',
+      'places_locality',
+      'places_country'
+    ];
+
+    // Find the first existing label layer
+    for (const layerId of labelLayerIds) {
+      if (map.getLayer(layerId)) {
+        return layerId;
+      }
+    }
+
+    // If no label layers found, try inserting before any layer with "label" in the name
+    try {
+      const style = map.getStyle();
+      if (style && style.layers) {
+        for (let i = style.layers.length - 1; i >= 0; i--) {
+          const layer = style.layers[i];
+          if (layer.id && layer.id.includes('label')) {
+            return layer.id;
+          }
+        }
+      }
+    } catch (e) {
+      // Style might not be accessible
+    }
+
+    // Fallback: return null (adds at end)
+    return null;
+  }
+
   function addHeatmapLayer() {
     if (!map.getSource('gyms-heatmap-data')) return;
 
-    map.addLayer({
+    // Find a good insertion point before Protomaps label layers
+    const beforeLayer = findInsertionPoint();
+    
+    const layerConfig = {
       id: 'gyms-heatmap',
       type: 'heatmap',
       source: 'gyms-heatmap-data',
@@ -206,13 +256,21 @@ export function createMapLayers(map, popupManager) {
         ],
         'heatmap-opacity': HEATMAP_CONFIG.OPACITY,
       },
-    });
+    };
+
+    if (beforeLayer) {
+      layerConfig.beforeLayer = beforeLayer;
+    }
+
+    map.addLayer(layerConfig);
   }
 
   function addCirclesLayer() {
     if (!map.getSource('gyms')) return;
 
-    map.addLayer({
+    const beforeLayer = findInsertionPoint();
+    
+    const layerConfig = {
       id: 'gyms-circles',
       type: 'circle',
       source: 'gyms',
@@ -245,19 +303,27 @@ export function createMapLayers(map, popupManager) {
         'circle-opacity': 1,
       },
       filter: ['!', ['has', 'point_count']],
-    });
+    };
+
+    if (beforeLayer) {
+      layerConfig.beforeLayer = beforeLayer;
+    }
+
+    map.addLayer(layerConfig);
   }
 
   function addLabelsLayer() {
     if (!map.getSource('gyms')) return;
 
-    map.addLayer({
+    const beforeLayer = findInsertionPoint();
+    
+    const layerConfig = {
       id: 'gyms-labels',
       type: 'symbol',
       source: 'gyms',
       layout: {
         'text-field': ['get', 'name'],
-        'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+        'text-font': ['Noto Sans Regular'],
         'text-offset': [0, 2],
         'text-anchor': 'top',
         'text-size': 12,
@@ -268,32 +334,38 @@ export function createMapLayers(map, popupManager) {
         'text-halo-width': 2,
       },
       minzoom: MAP_CONFIG.LABEL_MIN_ZOOM,
-    });
+    };
+
+    if (beforeLayer) {
+      layerConfig.beforeLayer = beforeLayer;
+    }
+
+    map.addLayer(layerConfig);
   }
 
   function addVisitedLayer() {
-    if (!map.getSource('gyms')) return;
+    if (!map.getSource('gyms') || !map.isStyleLoaded() || !map.loaded()) {
+      return;
+    }
 
     const iconName = VISITED_GYM_ICON.name;
     
     loadVisitedIcon((loaded) => {
-      if (!loaded) {
-        setTimeout(addVisitedLayer, 500);
+      if (!loaded || !map.hasImage(iconName)) {
+        // Retry after a delay if icon isn't loaded yet
+        setTimeout(addVisitedLayer, 300);
         return;
       }
 
-      if (!map.hasImage(iconName)) {
-        return;
-      }
-
+      // Remove existing layer if present
       if (map.getLayer('gyms-visited')) {
         map.removeLayer('gyms-visited');
       }
 
       try {
-        // Add visited layer at the end (on top of all other layers)
-        // This ensures the cross appears on top of the circle markers
-        map.addLayer({
+        const beforeLayer = findInsertionPoint();
+        
+        const layerConfig = {
           id: 'gyms-visited',
           type: 'symbol',
           source: 'gyms',
@@ -303,23 +375,27 @@ export function createMapLayers(map, popupManager) {
               'interpolate',
               ['linear'],
               ['zoom'],
-              4, 0.5,   // Scale factor: 24px * 0.5 = 12px at zoom 4
-              8, 0.6,   // Scale factor: 24px * 0.6 = 14.4px at zoom 8
-              12, 0.7,  // Scale factor: 24px * 0.7 = 16.8px at zoom 12
-              16, 0.8,  // Scale factor: 24px * 0.8 = 19.2px at zoom 16+
+              4, 0.5,
+              8, 0.6,
+              12, 0.7,
+              16, 0.8,
             ],
             'icon-anchor': 'center',
             'icon-allow-overlap': true,
             'icon-ignore-placement': true,
-            'visibility': 'visible',
           },
           paint: {
             'icon-opacity': 1.0,
           },
           filter: ['==', ['get', 'has_voted'], true],
           minzoom: MAP_CONFIG.CIRCLE_MIN_ZOOM,
-        });
-        // No beforeLayerId means it's added at the end (on top)
+        };
+
+        if (beforeLayer) {
+          layerConfig.beforeLayer = beforeLayer;
+        }
+
+        map.addLayer(layerConfig);
       } catch (error) {
         console.error('[Visited Layer] Error:', error);
       }
@@ -367,6 +443,7 @@ export function createMapLayers(map, popupManager) {
 
   // ==================== Main Functions ====================
   function addGymsLayer(geojson, onClick, votedIds = []) {
+    // Validate container and data
     if (!map.getContainer() || !map.getContainer().offsetWidth) {
       map.once('load', () => addGymsLayer(geojson, onClick, votedIds));
       return;
@@ -377,37 +454,38 @@ export function createMapLayers(map, popupManager) {
       return;
     }
 
+    // Ensure style is loaded before adding layers
+    if (!map.isStyleLoaded() || !map.loaded()) {
+      const waitAndAdd = () => {
+        if (map.isStyleLoaded() && map.loaded()) {
+          addGymsLayer(geojson, onClick, votedIds);
+        } else {
+          map.once('style.load', waitAndAdd);
+          map.once('load', waitAndAdd);
+        }
+      };
+      waitAndAdd();
+      return;
+    }
+
     try {
-      // Prepare data
       const preparedGeoJSON = prepareGeoJSON(geojson, votedIds);
-
-      // Setup sources (must be done before layers)
       setupSources(preparedGeoJSON);
-
-      // Remove old layers
       removeLayersIfExist();
 
-      // Add layers in correct order: heatmap -> circles -> labels -> visited icons
+      // Add layers in order: heatmap -> circles -> labels -> visited icons
       addHeatmapLayer();
       addCirclesLayer();
       addLabelsLayer();
-
-      // Setup event handlers
       setupEventHandlers(onClick);
 
-      // Add visited layer (async, after icon loads)
-      if (map.isStyleLoaded() && map.loaded()) {
-        setTimeout(addVisitedLayer, 500);
-      } else {
-        map.once('style.load', () => setTimeout(addVisitedLayer, 500));
-        map.once('load', () => setTimeout(addVisitedLayer, 500));
-        map.once('idle', () => setTimeout(addVisitedLayer, 500));
-      }
+      // Add visited layer after a short delay to ensure icon is ready
+      setTimeout(addVisitedLayer, 200);
     } catch (error) {
       console.error('Error adding gyms layers:', error);
+      // Retry if style wasn't ready
       if (!map.isStyleLoaded()) {
         map.once('style.load', () => addGymsLayer(geojson, onClick, votedIds));
-        map.once('load', () => addGymsLayer(geojson, onClick, votedIds));
       }
     }
   }
@@ -416,15 +494,17 @@ export function createMapLayers(map, popupManager) {
     if (mode !== 'stinky' && mode !== 'difficulty') return;
     currentMode = mode;
 
-    if (!map.isStyleLoaded()) return;
+    if (!map.isStyleLoaded() || !map.loaded()) return;
 
     // Update heatmap visibility
-    if (map.getLayer('gyms-heatmap')) {
+    const heatmapLayer = map.getLayer('gyms-heatmap');
+    if (heatmapLayer) {
       map.setLayoutProperty('gyms-heatmap', 'visibility', mode === 'stinky' ? 'visible' : 'none');
     }
 
     // Update circle colors and radius
-    if (map.getLayer('gyms-circles')) {
+    const circlesLayer = map.getLayer('gyms-circles');
+    if (circlesLayer) {
       const circleColor = mode === 'stinky' ? [
         'interpolate',
         ['linear'],
@@ -448,7 +528,9 @@ export function createMapLayers(map, popupManager) {
       ];
       
       map.setPaintProperty('gyms-circles', 'circle-color', circleColor);
-      map.setPaintProperty('gyms-circles', 'circle-radius', mode === 'stinky' ? CIRCLE_CONFIG.STINKY.RADIUS : CIRCLE_CONFIG.DIFFICULTY.RADIUS);
+      map.setPaintProperty('gyms-circles', 'circle-radius', 
+        mode === 'stinky' ? CIRCLE_CONFIG.STINKY.RADIUS : CIRCLE_CONFIG.DIFFICULTY.RADIUS
+      );
     }
   }
 

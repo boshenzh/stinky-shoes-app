@@ -49,10 +49,13 @@ app.use('/api/gyms', gymsRouter);
 const feedbackRouter = createFeedbackRouter(pool);
 app.use('/api/feedback', feedbackRouter);
 
-// Config endpoint
+// Config endpoint - returns Protomaps API key if available
 app.get('/config', (req, res) => {
-  const key = process.env.MAPTILER_API_KEY || "";
-  res.json({ maptilerKey: key });
+  const protomapsKey = process.env.PROTOMAPS_API_KEY || "";
+  res.json({ 
+    protomapsKey: protomapsKey,
+    maptilerKey: "" // Legacy - kept for backward compatibility
+  });
 });
 
 // Export as Vercel serverless function

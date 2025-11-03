@@ -15,17 +15,14 @@
     "vercel-build": "vite build",
     "preview": "vite preview",
     "start": "NODE_ENV=production node server.js",
-    "fetch:gyms": "node scripts/fetch_gyms_overpass.mjs --mode=grid --cell=10 --concurrency=2 --delay=500 --out=public/gyms.json",
-    "fetch:gyms:single": "node scripts/fetch_gyms_overpass.mjs --mode=single --out=public/gyms.json",
-    "fetch:gyms:bbox": "node scripts/fetch_gyms_overpass.mjs --mode=bbox --bbox=-125,24,-66,50 --out=public/gyms_us.json",
-    "fetch:gyms:china": "node scripts/fetch_china_gym.js",
-    "dedupe:gyms:china": "node scripts/dedupe_china_gyms.js",
-    "db:import": "node scripts/db_setup_and_import.js",
-    "db:random-stink": "node scripts/add_random_stink.js",
-    "fetch:gyms:world:google": "node scripts/fetch_world_gyms_google.js",
-    "fetch:gyms:world:google:countries": "node scripts/fetch_world_gyms_google_by_country.js",
-    "build:seeds:osm": "node scripts/build_country_seeds_osm.mjs",
-    "enrich:gym:locations": "node scripts/enrich_gym_location_data.js"
+    "db:populate": "node scripts/populate_database.js",
+    "db:populate:enrich": "node scripts/populate_database.js --enrich",
+    "db:enrich-local": "node scripts/enrich_local_db.js",
+    "db:copy-to-neon": "node scripts/copy_local_to_neon.js",
+    "db:show": "node scripts/show_database.js",
+    "db:show:neon": "node scripts/show_database.js --neon",
+    "db:clear": "node scripts/clear_database.js",
+    "db:clear-city-state": "node scripts/clear_city_state.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
@@ -34,6 +31,7 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "pg": "^8.12.0",
+    "pmtiles": "^4.3.0",
     "supercluster": "^8.0.1",
     "zustand": "^4.5.7"
   },

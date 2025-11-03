@@ -17,15 +17,11 @@ function initGymListToggle() {
 
 async function initApp() {
   try {
+    // Get Protomaps API key from config (optional - can use demo PMTiles without key)
     const config = await getConfig();
-    if (!config.maptilerKey) {
-      console.error('Missing MAPTILER_API_KEY');
-      alert('MAPTILER_API_KEY not set on server. See README.');
-      return;
-    }
-
-    // Initialize map
-    const mapManager = createMapManager(config);
+    const mapManager = createMapManager({ 
+      protomapsApiKey: config.protomapsKey || ''
+    });
 
     // Initialize components
     const gymList = createGymList(mapManager.map, getSmell);
@@ -203,43 +199,13 @@ async function initApp() {
       lat: f.geometry.coordinates[1],
     }));
 
-    // Add gyms layer when map is ready
-    // Use multiple events as fallbacks in case style.load doesn't fire
-    const addLayersWhenReady = () => {
-      const map = mapManager.map;
-      const isStyleLoaded = map.isStyleLoaded();
-      
-      let layersAdded = false;
-      const doAddLayers = () => {
-        if (layersAdded) return;
-        layersAdded = true;
-        try {
-          mapManager.addGymsLayer(geojson, onGymClick, votedGymIds);
-          gymList.setAll(all);
-        } catch (error) {
-          console.error('Error adding layers:', error);
-          layersAdded = false; // Allow retry on error
-        }
-      };
-      
-      if (isStyleLoaded) {
-        doAddLayers();
-      } else {
-        // Try multiple events as fallbacks
-        const handler = () => doAddLayers();
-        map.once('style.load', handler);
-        map.once('load', handler);
-        map.once('idle', handler);
-        
-        // Fallback timeout: if events don't fire after 5 seconds, try anyway
-        setTimeout(() => {
-          if (!layersAdded && (map.getSource || map.isStyleLoaded())) {
-            doAddLayers();
-          }
-        }, 5000);
-      }
-    };
-    addLayersWhenReady();
+    // Add gyms layer - MapLayers.js handles style loading internally
+    try {
+      mapManager.addGymsLayer(geojson, onGymClick, votedGymIds);
+      gymList.setAll(all);
+    } catch (error) {
+      console.error('Error adding layers:', error);
+    }
 
     // Refresh data function (refetches all gyms and updates vote data)
     async function refreshData() {

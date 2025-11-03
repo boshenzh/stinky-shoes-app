@@ -27,15 +27,19 @@ if (process.env.NODE_ENV === 'production') {
 }
 app.use(express.json());
 
-// Minimal config endpoint to deliver MapTiler key to the client
+// Config endpoint - returns Protomaps API key if available
+// Protomaps API key is optional - if not provided, falls back to demo PMTiles file
 app.get("/config", (req, res) => {
-  const key = process.env.MAPTILER_API_KEY || "";
+  const protomapsKey = process.env.PROTOMAPS_API_KEY || "";
   const origin = req.headers.origin;
   if (origin) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
   }
-  res.json({ maptilerKey: key });
+  res.json({ 
+    protomapsKey: protomapsKey,
+    maptilerKey: "" // Legacy - kept for backward compatibility
+  });
 });
 
 // --- Database
