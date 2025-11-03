@@ -431,44 +431,78 @@ async function initApp() {
     
     // Listen for style changes and re-add custom layers
     window.addEventListener('mapstylechange', async () => {
-      console.log('[App] Map style changed, waiting for style to load...');
+      console.log('[App] Map style changed, waiting for style to be ready...');
       
-      // Wait for style to be fully loaded before reloading gyms
-      const waitForStyleLoad = () => {
+      // Wait for style to be fully loaded and ready for layer operations
+      const waitForStyleReady = () => {
         return new Promise((resolve, reject) => {
-          if (mapManager.map.isStyleLoaded()) {
-            resolve();
-            return;
+          // Check if style is already loaded
+          const checkStyle = () => {
+            // Style is ready when isStyleLoaded() is true AND we can access style
+            if (mapManager.map.isStyleLoaded() && mapManager.map.getStyle()) {
+              // Give a small delay to ensure style is fully initialized
+              setTimeout(resolve, 300);
+              return true;
+            }
+            return false;
+          };
+          
+          if (checkStyle()) {
+            return; // Already ready
           }
           
-          let timeoutId = setTimeout(() => {
-            console.warn('[App] Style load timeout after 10 seconds');
-            reject(new Error('Style load timeout'));
-          }, 10000); // 10 second timeout
+          let timeoutId;
+          let styleLoadHandler;
+          let loadHandler;
           
-          mapManager.map.once('style.load', () => {
-            clearTimeout(timeoutId);
-            // Give it a small delay to ensure style is fully ready
-            setTimeout(resolve, 200);
-          });
+          const cleanup = () => {
+            if (timeoutId) clearTimeout(timeoutId);
+            if (styleLoadHandler) mapManager.map.off('style.load', styleLoadHandler);
+            if (loadHandler) mapManager.map.off('load', loadHandler);
+          };
+          
+          // Setup timeout
+          timeoutId = setTimeout(() => {
+            console.warn('[App] Style ready timeout after 8 seconds');
+            cleanup();
+            // Even on timeout, try to proceed if style seems loaded
+            if (mapManager.map.isStyleLoaded()) {
+              console.log('[App] Proceeding despite timeout - style appears loaded');
+              resolve();
+            } else {
+              reject(new Error('Style load timeout'));
+            }
+          }, 8000); // 8 second timeout
+          
+          // Listen for style.load event
+          styleLoadHandler = () => {
+            if (checkStyle()) {
+              cleanup();
+            }
+          };
+          
+          mapManager.map.once('style.load', styleLoadHandler);
           
           // Also listen for load event as backup
-          mapManager.map.once('load', () => {
-            clearTimeout(timeoutId);
-            setTimeout(resolve, 200);
-          });
+          loadHandler = () => {
+            if (checkStyle()) {
+              cleanup();
+            }
+          };
+          
+          mapManager.map.once('load', loadHandler);
         });
       };
       
       try {
-        await waitForStyleLoad();
-        console.log('[App] Style loaded, reloading gyms...');
+        await waitForStyleReady();
+        console.log('[App] Style ready, reloading gyms...');
         
         // Check if layers already exist - if so, just update data instead of recreating
         const layersExist = mapManager.map.getLayer('gyms-circles') || mapManager.map.getLayer('gyms-heatmap');
         
         if (layersExist) {
-          // Layers exist, just update the data
+          // Layers exist, just update the data (non-destructive)
           const bounds = mapManager.map.getBounds();
           const geojson = await fetchGymsByBbox(bounds);
           if (geojson && geojson.features && geojson.features.length > 0) {
@@ -476,12 +510,27 @@ async function initApp() {
             console.log('[App] Updated gyms data after style change');
           }
         } else {
-          // Layers don't exist, do a full reload
+          // Layers don't exist, need to recreate them
+          // Wait a bit more to ensure style is fully ready for layer creation
+          await new Promise(resolve => setTimeout(resolve, 500));
           await loadGymsForViewport(false);
         }
       } catch (error) {
         console.error('[App] Error reloading gyms after style change:', error);
-        toast.warning('Style changed but gyms are still loading...');
+        // Try to update data anyway if layers exist
+        const layersExist = mapManager.map.getLayer('gyms-circles') || mapManager.map.getLayer('gyms-heatmap');
+        if (layersExist) {
+          try {
+            const bounds = mapManager.map.getBounds();
+            const geojson = await fetchGymsByBbox(bounds);
+            if (geojson && geojson.features && geojson.features.length > 0) {
+              mapManager.updateGymsData(geojson, votedGymIds);
+              console.log('[App] Updated gyms data after style change (fallback)');
+            }
+          } catch (fallbackError) {
+            console.error('[App] Fallback update also failed:', fallbackError);
+          }
+        }
       }
     });
 

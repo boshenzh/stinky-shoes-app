@@ -625,8 +625,14 @@ export function createMapLayers(map, popupManager) {
   // ==================== Main Functions ====================
   
   // Track retry attempts to prevent infinite loops
+  // Reset retry count when style changes
   let addGymsLayerRetryCount = 0;
-  const MAX_ADD_GYMS_RETRIES = 3;
+  const MAX_ADD_GYMS_RETRIES = 5; // Increased from 3 to 5 for style changes
+  
+  // Reset retry count when map style changes
+  map.on('style.load', () => {
+    addGymsLayerRetryCount = 0; // Reset retry count on style load
+  });
   
   function addGymsLayer(geojson, onClick, votedIds = [], retryCount = 0) {
     // Prevent infinite retries
@@ -653,9 +659,22 @@ export function createMapLayers(map, popupManager) {
     // Ensure style is loaded before adding layers
     if (!map.isStyleLoaded()) {
       if (retryCount < MAX_ADD_GYMS_RETRIES) {
-        map.once('style.load', () => addGymsLayer(geojson, onClick, votedIds, retryCount + 1));
+        // Wait for style to load, with a delay to ensure it's fully ready
+        map.once('style.load', () => {
+          // Add delay to ensure style is fully initialized
+          setTimeout(() => {
+            addGymsLayer(geojson, onClick, votedIds, retryCount + 1);
+          }, 300);
+        });
       } else {
-        console.error('[MapLayers] Style not loaded after max retries');
+        console.error('[MapLayers] Style not loaded after max retries, aborting');
+        // Try once more after a longer delay as last resort
+        setTimeout(() => {
+          if (map.isStyleLoaded()) {
+            console.log('[MapLayers] Style loaded after delay, retrying once more...');
+            addGymsLayer(geojson, onClick, votedIds, retryCount);
+          }
+        }, 2000);
       }
       return;
     }
