@@ -83,7 +83,7 @@ export function getMapMinZoom() {
 export const MAP_CONFIG = {
   DEFAULT_CENTER: [-122.0090, 37.3349],
   DEFAULT_ZOOM: 12,
-  LABEL_MIN_ZOOM: 12,
+  LABEL_MIN_ZOOM: 4, // Labels appear at zoom 4 and above (was 12)
   CLUSTER_RADIUS: 13, // Cluster radius in pixels
   CLUSTER_MIN_ZOOM: 5, // Start clustering at this zoom level (clustering enabled at/above this zoom)
   CIRCLE_MIN_ZOOM: 4, // Hide gym circles below this zoom level (desktop)

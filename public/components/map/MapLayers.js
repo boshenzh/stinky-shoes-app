@@ -309,14 +309,35 @@ export function createMapLayers(map, popupManager) {
         'text-font': ['Noto Sans Regular'],
         'text-offset': [0, 2],
         'text-anchor': 'top',
-        'text-size': 12,
+        // Text size scales with zoom level for better visibility at different zoom levels
+        'text-size': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          4, 10,   // Smaller text at zoom 4 (very zoomed out)
+          8, 11,   // Medium text at zoom 8
+          12, 12,  // Standard text at zoom 12
+          16, 14,  // Larger text at zoom 16+ (very zoomed in)
+        ],
+        'text-allow-overlap': false, // Allow labels to overlap for better visibility
+        'text-ignore-placement': false, // Respect placement rules
+        'text-optional': false, // Always show text if possible
       },
       paint: {
         'text-color': '#333',
         'text-halo-color': '#fff',
         'text-halo-width': 2,
+        // Text opacity can adjust with zoom if needed
+        'text-opacity': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          4, 0.8,  // Slightly transparent at low zoom
+          8, 0.9,
+          12, 1.0, // Fully opaque at normal zoom
+        ],
       },
-      minzoom: MAP_CONFIG.LABEL_MIN_ZOOM,
+      minzoom: MAP_CONFIG.LABEL_MIN_ZOOM, // Now 4 instead of 12
     };
 
     if (beforeLayer) {
