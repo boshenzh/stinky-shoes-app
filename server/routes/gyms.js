@@ -582,7 +582,7 @@ export function createGymsRouter(pool, hasPassword, verifyPassword) {
       }
       
       const { rows } = await pool.query(q, params);
-      console.log(`[API] Fetched ${rows.length} gyms (bbox: ${hasBbox}, styleColumns: ${styleColumnsExist})`);
+      // console.log(`[API] Fetched ${rows.length} gyms (bbox: ${hasBbox}, styleColumns: ${styleColumnsExist})`);
       return res.json(rows);
     } catch (e) {
       console.error('[API] Error fetching gyms:', e);

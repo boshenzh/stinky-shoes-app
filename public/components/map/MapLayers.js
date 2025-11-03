@@ -483,8 +483,8 @@ export function createMapLayers(map, popupManager) {
       addLabelsLayer();
       setupEventHandlers(onClick);
 
-      // Add visited layer after a short delay to ensure icon is ready
-      setTimeout(addVisitedLayer, 200);
+      // Add visited layer immediately - icon should already be loaded
+      addVisitedLayer();
     } catch (error) {
       console.error('Error adding gyms layers:', error);
       // Retry if style wasn't ready

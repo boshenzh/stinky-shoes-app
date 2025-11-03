@@ -67,8 +67,8 @@ async function initApp() {
       });
     }
 
-    mapManager.map.on('moveend', updateListForViewport);
-    mapManager.map.on('zoomend', updateListForViewport);
+    // Note: Viewport updates are now handled by handleViewportChange above
+    // which calls updateListForViewport after loading gyms
 
     // Mode switcher button
     const modeSwitcher = document.getElementById('modeSwitcher');
@@ -165,66 +165,101 @@ async function initApp() {
       });
     }
 
-    // Load all gym data
-    console.log('[App] Fetching all gyms from database...');
-    let geojson = await fetchAllGyms();
-    console.log(`[App] Loaded ${geojson.features.length} gyms`);
-    
-    if (!geojson || !geojson.features || geojson.features.length === 0) {
-      console.warn('[App] WARNING: No gyms loaded! This could indicate:');
-      console.warn('[App] 1. Database connection issue');
-      console.warn('[App] 2. Empty database in production');
-      console.warn('[App] 3. API endpoint not working');
-      console.warn('[App] 4. CORS or network error');
-    }
-    
-    // Fetch voted gym IDs for current user
+    // Fetch voted gym IDs for current user (do this first, before loading gyms)
     const username = getUsername();
     let votedGymIds = [];
     if (username) {
       try {
         votedGymIds = await fetchVotedGymIds(username);
-        console.log(`User has voted on ${votedGymIds.length} gyms`);
+        console.log(`[App] User has voted on ${votedGymIds.length} gyms`);
       } catch (error) {
-        console.error('Error fetching voted gym IDs:', error);
+        console.error('[App] Error fetching voted gym IDs:', error);
       }
     }
+
+    // Load gyms in viewport first (much faster than loading all 17k+ gyms)
+    console.log('[App] Fetching gyms in viewport...');
+    const loadGymsForViewport = async () => {
+      const startTime = performance.now();
+      const bounds = mapManager.map.getBounds();
+      let geojson = await fetchGymsByBbox(bounds);
+      const loadTime = performance.now() - startTime;
+      console.log(`[App] Loaded ${geojson.features.length} gyms in viewport in ${loadTime.toFixed(0)}ms`);
+      
+      if (!geojson || !geojson.features || geojson.features.length === 0) {
+        console.warn('[App] WARNING: No gyms in viewport! This could indicate:');
+        console.warn('[App] 1. Database connection issue');
+        console.warn('[App] 2. Empty database in production');
+        console.warn('[App] 3. API endpoint not working');
+        return;
+      }
+
+      let all = geojson.features.map(f => ({
+        id: f.properties.id,
+        name: f.properties.name,
+        address: f.properties.address,
+        city: f.properties.city,
+        country_code: f.properties.country_code,
+        tel: f.properties.tel,
+        image: f.properties.image,
+        smell_avg: f.properties.smell_avg,
+        smell_votes: f.properties.smell_votes,
+        difficulty_avg: f.properties.difficulty_avg,
+        difficulty_votes: f.properties.difficulty_votes,
+        parking_availability_avg: f.properties.parking_availability_avg,
+        parking_votes: f.properties.parking_votes,
+        pet_friendly_avg: f.properties.pet_friendly_avg,
+        pet_friendly_votes: f.properties.pet_friendly_votes,
+        styles: f.properties.styles,
+        lng: f.geometry.coordinates[0],
+        lat: f.geometry.coordinates[1],
+      }));
+
+      // Add gyms layer - MapLayers.js handles style loading internally
+      try {
+        const layerStartTime = performance.now();
+        mapManager.addGymsLayer(geojson, onGymClick, votedGymIds);
+        const layerTime = performance.now() - layerStartTime;
+        console.log(`[App] Added ${geojson.features.length} markers to map in ${layerTime.toFixed(0)}ms`);
+        gymList.setAll(all);
+      } catch (error) {
+        console.error('[App] Error adding layers:', error);
+      }
+    };
+
+    // Wait for map to be ready before loading gyms
+    const addLayersWhenReady = () => {
+      if (mapManager.map.isStyleLoaded() && mapManager.map.loaded()) {
+        loadGymsForViewport();
+      } else {
+        mapManager.map.once('load', loadGymsForViewport);
+        mapManager.map.once('style.load', loadGymsForViewport);
+      }
+    };
     
-    let all = geojson.features.map(f => ({
-      id: f.properties.id,
-      name: f.properties.name,
-      address: f.properties.address,
-      city: f.properties.city,
-      country_code: f.properties.country_code,
-      tel: f.properties.tel,
-      image: f.properties.image,
-      smell_avg: f.properties.smell_avg,
-      smell_votes: f.properties.smell_votes,
-      difficulty_avg: f.properties.difficulty_avg,
-      difficulty_votes: f.properties.difficulty_votes,
-      parking_availability_avg: f.properties.parking_availability_avg,
-      parking_votes: f.properties.parking_votes,
-      pet_friendly_avg: f.properties.pet_friendly_avg,
-      pet_friendly_votes: f.properties.pet_friendly_votes,
-      styles: f.properties.styles,
-      lng: f.geometry.coordinates[0],
-      lat: f.geometry.coordinates[1],
-    }));
+    addLayersWhenReady();
 
-    // Add gyms layer - MapLayers.js handles style loading internally
-    try {
-      mapManager.addGymsLayer(geojson, onGymClick, votedGymIds);
-      gymList.setAll(all);
-    } catch (error) {
-      console.error('Error adding layers:', error);
-    }
+    // Also reload gyms when viewport changes (but debounced)
+    let viewportUpdateTimeout;
+    const handleViewportChange = () => {
+      clearTimeout(viewportUpdateTimeout);
+      viewportUpdateTimeout = setTimeout(() => {
+        loadGymsForViewport().then(() => {
+          updateListForViewport();
+        });
+      }, 300); // Debounce viewport updates
+    };
 
-    // Refresh data function (refetches all gyms and updates vote data)
+    mapManager.map.on('moveend', handleViewportChange);
+    mapManager.map.on('zoomend', handleViewportChange);
+
+    // Refresh data function (refetches gyms in viewport and updates vote data)
     async function refreshData() {
-      console.log('Refreshing gym data...');
-      geojson = await fetchAllGyms();
+      console.log('[App] Refreshing gym data for viewport...');
+      const bounds = mapManager.map.getBounds();
+      const geojson = await fetchGymsByBbox(bounds);
       mapManager.updateGymsData(geojson);
-      all = geojson.features.map(f => ({
+      const all = geojson.features.map(f => ({
         id: f.properties.id,
         name: f.properties.name,
         address: f.properties.address,
@@ -285,17 +320,17 @@ async function initApp() {
       buyMeCoffeeBtn.addEventListener('touchstart', (e) => {
         clearTimeout(touchTimeout);
         buyMeCoffeeBtn.classList.add('buy-me-coffee-btn-active');
-      });
+      }, { passive: true });
       buyMeCoffeeBtn.addEventListener('touchend', (e) => {
         touchTimeout = setTimeout(() => {
           buyMeCoffeeBtn.classList.remove('buy-me-coffee-btn-active');
         }, 2000);
-      });
+      }, { passive: true });
       // Remove active state when user leaves the button
       buyMeCoffeeBtn.addEventListener('touchcancel', () => {
         clearTimeout(touchTimeout);
         buyMeCoffeeBtn.classList.remove('buy-me-coffee-btn-active');
-      });
+      }, { passive: true });
     }
 
     // Handle mobile tap for Feedback button
@@ -305,17 +340,17 @@ async function initApp() {
       feedbackBtn.addEventListener('touchstart', (e) => {
         clearTimeout(feedbackTouchTimeout);
         feedbackBtn.classList.add('feedback-btn-active');
-      });
+      }, { passive: true });
       feedbackBtn.addEventListener('touchend', (e) => {
         feedbackTouchTimeout = setTimeout(() => {
           feedbackBtn.classList.remove('feedback-btn-active');
         }, 2000);
-      });
+      }, { passive: true });
       // Remove active state when user leaves the button
       feedbackBtn.addEventListener('touchcancel', () => {
         clearTimeout(feedbackTouchTimeout);
         feedbackBtn.classList.remove('feedback-btn-active');
-      });
+      }, { passive: true });
 
       // Configure feedbackfin with user info if available
       const username = getUsername();

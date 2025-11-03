@@ -73,8 +73,16 @@ function getDifficultyText(value) {
   return DIFFICULTY_LABELS[rounded] || (value < 0 ? 'Bit Soft' : 'Bit Hard');
 }
 
+// Helper function to convert HTTP URLs to HTTPS
+function ensureHttps(url) {
+  if (!url || typeof url !== 'string') return url;
+  // Replace http:// with https:// for external URLs
+  return url.replace(/^http:\/\//, 'https://');
+}
+
 // Helper functions
 function normalizeGymData(gymFeature) {
+  const imageUrl = gymFeature.properties.image_primary_url || gymFeature.properties.image;
   return {
     id: gymFeature.properties.id,
     name: gymFeature.properties.name,
@@ -82,7 +90,7 @@ function normalizeGymData(gymFeature) {
     city: gymFeature.properties.city,
     country_code: gymFeature.properties.country_code,
     tel: gymFeature.properties.tel,
-    image: gymFeature.properties.image_primary_url || gymFeature.properties.image,
+    image: ensureHttps(imageUrl),
     smell_avg: gymFeature.properties.smell_avg,
     smell_votes: gymFeature.properties.smell_votes,
     difficulty_avg: gymFeature.properties.difficulty_avg,

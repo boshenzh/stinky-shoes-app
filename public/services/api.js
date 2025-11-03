@@ -31,7 +31,7 @@ function convertRowsToGeoJSON(rows) {
       state: g.state || '',
       country_code: g.country_code || '',
       tel: g.phone || '',
-      image: g.image_primary_url || '',
+      image: ensureHttps(g.image_primary_url || ''),
       // Vote results - parse all numeric values (PostgreSQL can return integers as strings)
       smell_avg: smellAvg,
       smell_votes: Number(g.smell_votes) || 0,
@@ -75,11 +75,24 @@ function convertRowsToGeoJSON(rows) {
 }
 
 export async function fetchGymsByBbox(bounds) {
-  const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()].join(',');
-  const res = await fetch(`/api/gyms?bbox=${bbox}`);
-  if (!res.ok) return { type: 'FeatureCollection', features: [] };
-  const rows = await res.json();
-  return convertRowsToGeoJSON(rows);
+  try {
+    const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()].join(',');
+    const startTime = performance.now();
+    const res = await fetch(`/api/gyms?bbox=${bbox}`);
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error(`[API] Failed to fetch gyms by bbox: ${res.status} ${res.statusText}`, errorText);
+      return { type: 'FeatureCollection', features: [] };
+    }
+    const rows = await res.json();
+    const fetchTime = performance.now() - startTime;
+    const geojson = convertRowsToGeoJSON(rows);
+    console.log(`[API] Fetched ${geojson.features.length} gyms in bbox in ${fetchTime.toFixed(0)}ms`);
+    return geojson;
+  } catch (error) {
+    console.error('[API] Error fetching gyms by bbox:', error);
+    return { type: 'FeatureCollection', features: [] };
+  }
 }
 
 export async function fetchAllGyms() {
@@ -119,7 +132,7 @@ export async function fetchGymById(gymId) {
       city: gym.city || '',
       country_code: gym.country_code || '',
       tel: gym.phone || '',
-      image: gym.image_primary_url || '',
+      image: ensureHttps(gym.image_primary_url || ''),
       smell_avg: parseNumericValue(gym.smell_avg),
       smell_votes: Number(gym.smell_votes) || 0,
       difficulty_avg: parseNumericValue(gym.difficulty_avg),
