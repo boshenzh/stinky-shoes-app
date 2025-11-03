@@ -240,7 +240,6 @@ async function initApp() {
           console.warn('[App] 1. Database connection issue');
           console.warn('[App] 2. Empty database in production');
           console.warn('[App] 3. API endpoint not working');
-          toast.warning('No gyms found in this area. Try zooming out or moving the map.');
           return;
         }
       } catch (error) {
