@@ -646,7 +646,14 @@ export function createVotePanel(popupManager) {
         // Small delay to ensure vote panel is hidden
         await new Promise(resolve => setTimeout(resolve, 100));
         
-        // Refresh the popup with updated data
+        // Dispatch event to refresh gym data and map markers
+        // This will trigger app.js listener which:
+        // 1. Refreshes voted gym IDs
+        // 2. Updates map layers with new has_voted flags
+        // 3. Refreshes popup data
+        window.dispatchEvent(new CustomEvent('gym:refresh', { detail: gym.id }));
+        
+        // Also refresh popup directly (in case event listener hasn't set up yet)
         console.log('Refreshing popup for gym:', gym.id, gym.name);
         await popupManager.refreshPopupForGym(gym.id);
         

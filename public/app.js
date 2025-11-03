@@ -539,7 +539,8 @@ async function initApp() {
       console.log('[App] Refreshing gym data for viewport...');
       const bounds = mapManager.map.getBounds();
       const geojson = await fetchGymsByBbox(bounds);
-      mapManager.updateGymsData(geojson);
+      // Pass votedGymIds to updateGymsData so has_voted flags are set correctly
+      mapManager.updateGymsData(geojson, votedGymIds);
       const all = geojson.features.map(f => ({
         id: f.properties.id,
         name: f.properties.name,
@@ -579,6 +580,10 @@ async function initApp() {
         if (auth.username && auth.isLoggedIn) {
           try {
             const newVotedGymIds = await fetchVotedGymIds(auth.username);
+            console.log(`[App] Refreshed voted gym IDs: ${newVotedGymIds.length} gyms`);
+            // Update the local variable so refreshData uses the new list
+            votedGymIds = newVotedGymIds;
+            // Update map layers immediately with new voted IDs
             if (mapManager.setVotedGyms) {
               mapManager.setVotedGyms(newVotedGymIds);
             }
@@ -586,7 +591,7 @@ async function initApp() {
             console.error('Error refreshing voted gym IDs:', error);
           }
         }
-        // Refresh all data
+        // Refresh all data (will use updated votedGymIds)
         await refreshData();
       }
     });
