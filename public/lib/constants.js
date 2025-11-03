@@ -9,9 +9,17 @@ export const HEATMAP_COLORS = {
 };
 
 export const HEATMAP_CONFIG = {
-  INTENSITY: 0.8, // Overall intensity of the heatmap
-  RADIUS: 60, // Radius of influence for each point in pixels
-  OPACITY: 0.7, // Overall opacity of the heatmap
+  INTENSITY: 0.8, // Base intensity (will be animated)
+  RADIUS: 60, // Base radius (will be animated)
+  OPACITY: 0.7, // Base opacity (will be animated)
+  // Animation settings
+  ANIMATION: {
+    ENABLED: true,
+    PULSE_SPEED: 0.002, // Speed of pulsing (higher = faster)
+    INTENSITY_VARIATION: 0.1, // How much intensity varies (0.8 ± 0.2 = 0.6 to 1.0)
+    RADIUS_VARIATION: 5, // How much radius varies (60 ± 15 = 45 to 75)
+    OPACITY_VARIATION: 0.05, // How much opacity varies (0.7 ± 0.15 = 0.55 to 0.85)
+  },
   // Color stops for heatmap intensity (0 = transparent/no data, 1 = maximum intensity)
   // First stop must be transparent so areas with no data don't show any color
   COLOR_STOPS: [

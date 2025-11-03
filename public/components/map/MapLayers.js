@@ -20,6 +20,8 @@ export function createMapLayers(map, popupManager) {
   let currentMode = 'stinky';
   let votedGymIds = new Set();
   let visitedIconLoaded = false;
+  let heatmapAnimationId = null;
+  let animationStartTime = null;
 
   // ==================== Utility Functions ====================
   
@@ -259,6 +261,9 @@ export function createMapLayers(map, popupManager) {
   // ==================== Layer Management ====================
   
   function removeLayersIfExist() {
+    // Stop animation before removing layers
+    stopHeatmapAnimation();
+    
     const layerIds = ['gyms-heatmap', 'gyms-circles', 'gyms-labels', 'gyms-visited'];
     layerIds.forEach(id => {
       if (map.getLayer(id)) {
@@ -318,6 +323,89 @@ export function createMapLayers(map, popupManager) {
     }
 
     map.addLayer(layerConfig);
+    
+    // Start animation if enabled
+    if (HEATMAP_CONFIG.ANIMATION.ENABLED && currentMode === 'stinky') {
+      startHeatmapAnimation();
+    }
+  }
+  
+  /**
+   * Animates the heatmap to create a pulsing "stinky" effect
+   * Uses sine waves to create smooth pulsing animation
+   */
+  function startHeatmapAnimation() {
+    if (heatmapAnimationId !== null) return; // Already animating
+    
+    const layer = map.getLayer('gyms-heatmap');
+    if (!layer) return;
+    
+    animationStartTime = animationStartTime || performance.now();
+    
+    function animate() {
+      const layer = map.getLayer('gyms-heatmap');
+      if (!layer || currentMode !== 'stinky') {
+        stopHeatmapAnimation();
+        return;
+      }
+      
+      const elapsed = (performance.now() - animationStartTime) * HEATMAP_CONFIG.ANIMATION.PULSE_SPEED;
+      
+      // Create pulsing effect using sine waves (different phases for variety)
+      const intensityPulse = Math.sin(elapsed);
+      const radiusPulse = Math.sin(elapsed * 0.8 + Math.PI / 4); // Different phase
+      const opacityPulse = Math.sin(elapsed * 1.2 - Math.PI / 3); // Different phase
+      
+      // Calculate animated values
+      const animatedIntensity = HEATMAP_CONFIG.INTENSITY + 
+        (intensityPulse * HEATMAP_CONFIG.ANIMATION.INTENSITY_VARIATION);
+      const animatedRadius = HEATMAP_CONFIG.RADIUS + 
+        (radiusPulse * HEATMAP_CONFIG.ANIMATION.RADIUS_VARIATION);
+      const animatedOpacity = HEATMAP_CONFIG.OPACITY + 
+        (opacityPulse * HEATMAP_CONFIG.ANIMATION.OPACITY_VARIATION);
+      
+      // Update heatmap properties dynamically
+      try {
+        // Update intensity at zoom 15 (where it's most visible)
+        map.setPaintProperty('gyms-heatmap', 'heatmap-intensity', [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          0, 0.5,
+          15, Math.max(0.1, Math.min(1.5, animatedIntensity)), // Clamp between 0.1 and 1.5
+        ]);
+        
+        // Update radius
+        map.setPaintProperty('gyms-heatmap', 'heatmap-radius', [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          0, animatedRadius * 0.5,
+          10, animatedRadius,
+          15, animatedRadius * 1.5,
+        ]);
+        
+        // Update opacity
+        map.setPaintProperty('gyms-heatmap', 'heatmap-opacity', 
+          Math.max(0.3, Math.min(1.0, animatedOpacity)) // Clamp between 0.3 and 1.0
+        );
+      } catch (e) {
+        // Layer might have been removed
+        stopHeatmapAnimation();
+        return;
+      }
+      
+      heatmapAnimationId = requestAnimationFrame(animate);
+    }
+    
+    animate();
+  }
+  
+  function stopHeatmapAnimation() {
+    if (heatmapAnimationId !== null) {
+      cancelAnimationFrame(heatmapAnimationId);
+      heatmapAnimationId = null;
+    }
   }
 
   function addCirclesLayer(callback) {
@@ -590,15 +678,27 @@ export function createMapLayers(map, popupManager) {
       return;
     }
 
+    const previousMode = currentMode;
     currentMode = mode;
 
-    // Update heatmap visibility
+    // Update heatmap visibility and animation
     if (map.getLayer('gyms-heatmap')) {
+      const willBeVisible = mode === 'stinky';
+      const wasVisible = previousMode === 'stinky';
+      
       map.setLayoutProperty(
         'gyms-heatmap',
         'visibility',
-        mode === 'stinky' ? 'visible' : 'none'
+        willBeVisible ? 'visible' : 'none'
       );
+      
+      // Start/stop animation based on visibility
+      if (willBeVisible && !wasVisible && HEATMAP_CONFIG.ANIMATION.ENABLED) {
+        animationStartTime = null; // Reset animation timer
+        startHeatmapAnimation();
+      } else if (!willBeVisible && wasVisible) {
+        stopHeatmapAnimation();
+      }
     }
 
     // Update circle radius
