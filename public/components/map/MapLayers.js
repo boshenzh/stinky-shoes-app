@@ -202,13 +202,16 @@ export function createMapLayers(map, popupManager) {
     const heatmapData = prepareHeatmapData(geojson);
 
     // Set up main gyms source
+    // Note: MapLibre uses clusterMaxZoom to STOP clustering above that zoom
+    // To make clustering START at CLUSTER_MIN_ZOOM, we set clusterMaxZoom very high
+    // This means clustering happens from CLUSTER_MIN_ZOOM up to a very high zoom
     if (!map.getSource('gyms')) {
       map.addSource('gyms', {
         type: 'geojson',
         data: geojson,
         cluster: true,
-        clusterMaxZoom: 14,
-        clusterRadius: 50,
+        clusterMaxZoom: 22, // Very high zoom - clustering won't stop (effectively enables clustering from CLUSTER_MIN_ZOOM)
+        clusterRadius: MAP_CONFIG.CLUSTER_RADIUS,
       });
       gymsSource = map.getSource('gyms');
     } else {
