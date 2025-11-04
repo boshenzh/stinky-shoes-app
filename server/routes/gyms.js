@@ -833,32 +833,46 @@ export function createGymsRouter(pool, hasPassword, verifyPassword) {
       }
       
       // Add WHERE clause to the base CTE
-      // The base CTE is defined as: "base as (select ... from gyms\n),"
-      // We need to add WHERE after "from gyms" but before the closing parenthesis and comma
+      // The base CTE structure is: "base as (select ... from gyms\n),"
+      // We need to add WHERE after "from gyms" but before the closing parenthesis
       const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
       
       // Find "from gyms" in the base CTE and add WHERE clause after it
-      // The base CTE pattern is: "from gyms\n),"
-      // Try multiple patterns to handle different whitespace scenarios
+      // The query structure: "from gyms\n      ),"
+      // Match "from gyms" followed by any whitespace/newlines, then closing paren and comma
       let originalQ = q;
       
-      // Pattern 1: "from gyms" followed by whitespace/newline, then "),"
-      q = q.replace(/(from gyms)(\s+\)\s*,)/i, `$1 ${whereClause}$2`);
-      
-      // Pattern 2: If first pattern didn't match, try "from gyms" followed by any characters until "),"
-      if (q === originalQ) {
-        q = q.replace(/(from gyms)([^)]*\)\s*,)/i, `$1 ${whereClause}$2`);
-      }
-      
-      // Pattern 3: If still not matched, try without requiring comma
-      if (q === originalQ) {
-        q = q.replace(/(from gyms)(\s*\))/i, `$1 ${whereClause}$2`);
-      }
+      // Pattern: Match "from gyms" followed by whitespace/newlines, then "),"
+      // Use non-greedy matching to stop at the first closing paren
+      q = q.replace(/(from gyms)([\s\S]*?\)\s*,)/i, (match, p1, p2) => {
+        // p1 = "from gyms"
+        // p2 = whitespace/newlines + "),"
+        // Insert WHERE clause right after "from gyms" and before the closing paren
+        return `${p1} ${whereClause}${p2}`;
+      });
       
       if (q === originalQ) {
-        console.error('Failed to add WHERE clause to query. Query structure:', q.substring(0, 500));
-        return res.status(500).json({ error: 'Failed to build query' });
+        // Fallback: Try matching without the comma requirement
+        q = q.replace(/(from gyms)([\s\S]*?\))/i, (match, p1, p2) => {
+          return `${p1} ${whereClause}${p2}`;
+        });
       }
+      
+      if (q === originalQ) {
+        console.error('Failed to add WHERE clause to query. Query structure (first 1000 chars):', q.substring(0, 1000));
+        console.error('Looking for pattern: from gyms');
+        return res.status(500).json({ error: 'Failed to build query', details: 'Could not inject WHERE clause' });
+      }
+      
+      // Validate the query has proper syntax before executing
+      // Check that we didn't accidentally create duplicate "from" keywords or malformed SQL
+      if (q.match(/from\s+from/i)) {
+        console.error('Query has duplicate "from" keywords. Query (first 500 chars):', q.substring(0, 500));
+        return res.status(500).json({ error: 'Failed to build query', details: 'Invalid query structure' });
+      }
+      
+      // Log the modified query for debugging (first 500 chars)
+      console.log('Modified query (first 500 chars):', q.substring(0, 500));
       
       const { rows } = await pool.query(q, params);
       return res.json(rows);
