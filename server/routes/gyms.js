@@ -833,21 +833,38 @@ export function createGymsRouter(pool, hasPassword, verifyPassword) {
       }
       
       // Add WHERE clause to the base CTE
-      // The base CTE is defined as: "base as (select ... from gyms)"
-      // We need to add WHERE after "from gyms" but before any closing parenthesis
+      // The base CTE is defined as: "base as (select ... from gyms\n),"
+      // We need to add WHERE after "from gyms" but before the closing parenthesis and comma
       const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
       
       // Find "from gyms" in the base CTE and add WHERE clause after it
-      // Match "from gyms" followed by optional whitespace and optional newline
-      // We need to be careful to match the first occurrence in the base CTE
-      q = q.replace(/(base as\s*\([^)]*from gyms)([\s\n]*)/i, (match, prefix, whitespace) => {
-        return `${prefix}${whitespace}${whereClause}${whitespace}`;
-      });
+      // The base CTE pattern is: "from gyms\n),"
+      // Try multiple patterns to handle different whitespace scenarios
+      let originalQ = q;
+      
+      // Pattern 1: "from gyms" followed by whitespace/newline, then "),"
+      q = q.replace(/(from gyms)(\s+\)\s*,)/i, `$1 ${whereClause}$2`);
+      
+      // Pattern 2: If first pattern didn't match, try "from gyms" followed by any characters until "),"
+      if (q === originalQ) {
+        q = q.replace(/(from gyms)([^)]*\)\s*,)/i, `$1 ${whereClause}$2`);
+      }
+      
+      // Pattern 3: If still not matched, try without requiring comma
+      if (q === originalQ) {
+        q = q.replace(/(from gyms)(\s*\))/i, `$1 ${whereClause}$2`);
+      }
+      
+      if (q === originalQ) {
+        console.error('Failed to add WHERE clause to query. Query structure:', q.substring(0, 500));
+        return res.status(500).json({ error: 'Failed to build query' });
+      }
       
       const { rows } = await pool.query(q, params);
       return res.json(rows);
     } catch (e) {
       console.error('Error fetching gyms by region:', e);
+      console.error('Error details:', e.message, e.stack);
       res.status(500).json({ error: 'server_error' });
     }
   });
