@@ -159,6 +159,25 @@ export async function fetchGymsByBbox(bounds) {
   }
 }
 
+export async function fetchGymsByRegion(country, state = null, city = null) {
+  try {
+    const params = new URLSearchParams({ country });
+    if (state) params.append('state', state);
+    if (city) params.append('city', city);
+    
+    const res = await fetchWithErrorHandling(`/api/gyms/by-region?${params.toString()}`);
+    if (!res.ok) return [];
+    
+    const rows = await res.json();
+    return convertRowsToGeoJSON(rows);
+  } catch (error) {
+    const appError = parseError(error);
+    console.error('[API] Error fetching gyms by region:', appError);
+    // Return empty GeoJSON on error to prevent app crash
+    return { type: 'FeatureCollection', features: [] };
+  }
+}
+
 export async function fetchGymById(gymId) {
   const res = await fetch(`/api/gyms/${gymId}`);
   if (!res.ok) return null;
@@ -175,6 +194,7 @@ export async function fetchGymById(gymId) {
       country_code: gym.country_code || '',
       tel: gym.phone || '',
       image: ensureHttps(gym.image_primary_url || ''),
+      raw: gym.raw || null, // Include raw data for image extraction
       smell_avg: parseNumericValue(gym.smell_avg),
       smell_votes: Number(gym.smell_votes) || 0,
       difficulty_avg: parseNumericValue(gym.difficulty_avg),

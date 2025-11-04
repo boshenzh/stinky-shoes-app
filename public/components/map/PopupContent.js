@@ -349,15 +349,96 @@ export function createPopupContent(gym) {
     return url.replace(/^http:\/\//, 'https://');
   }
   
-  const imageUrl = ensureHttps(gym.image || '');
+  // Extract all images from gym data
+  function extractImages(gym) {
+    const images = [];
+    
+    // Primary image
+    if (gym.image) {
+      images.push(ensureHttps(gym.image));
+    }
+    
+    // Check raw data for additional images
+    if (gym.raw && typeof gym.raw === 'object') {
+      // Handle different possible image formats in raw data
+      if (gym.raw.images && Array.isArray(gym.raw.images)) {
+        gym.raw.images.forEach(img => {
+          const url = img.url || img || (typeof img === 'object' ? img.src : null);
+          if (url && !images.includes(ensureHttps(url))) {
+            images.push(ensureHttps(url));
+          }
+        });
+      } else if (gym.raw.photo && Array.isArray(gym.raw.photo)) {
+        gym.raw.photo.forEach(photo => {
+          const url = photo.url || photo || (typeof photo === 'object' ? photo.src : null);
+          if (url && !images.includes(ensureHttps(url))) {
+            images.push(ensureHttps(url));
+          }
+        });
+      } else if (gym.raw.photos && Array.isArray(gym.raw.photos)) {
+        gym.raw.photos.forEach(photo => {
+          const url = photo.url || photo || (typeof photo === 'object' ? photo.src : null);
+          if (url && !images.includes(ensureHttps(url))) {
+            images.push(ensureHttps(url));
+          }
+        });
+      }
+    }
+    
+    return images;
+  }
+  
+  const images = extractImages(gym);
+  const hasMultipleImages = images.length > 1;
+  
+  // Generate image carousel HTML
+  function createImageCarousel(images) {
+    if (images.length === 0) return '';
+    
+    if (images.length === 1) {
+      // Single image - no carousel needed
+      return `
+        <div class="w-full h-24 sm:h-32 bg-gradient-to-br from-orange-100 to-red-100 overflow-hidden relative">
+          <img src="${images[0]}" class="w-full h-full object-cover" alt="${gym.name || 'Gym'}" />
+        </div>
+      `;
+    }
+    
+    // Multiple images - create carousel
+    const carouselId = `gym-carousel-${gym.id || Date.now()}`;
+    return `
+      <div class="w-full h-24 sm:h-32 bg-gradient-to-br from-orange-100 to-red-100 overflow-hidden relative group" id="${carouselId}" data-carousel-id="${carouselId}" data-total-images="${images.length}">
+        <div class="flex transition-transform duration-300 ease-in-out h-full carousel-slides" style="transform: translateX(0%);">
+          ${images.map((img, idx) => `
+            <div class="min-w-full h-full flex-shrink-0">
+              <img src="${img}" class="w-full h-full object-cover" alt="${gym.name || 'Gym'} - Image ${idx + 1}" />
+            </div>
+          `).join('')}
+        </div>
+        <!-- Navigation arrows -->
+        <button class="carousel-prev absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10" aria-label="Previous image">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+          </svg>
+        </button>
+        <button class="carousel-next absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10" aria-label="Next image">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+          </svg>
+        </button>
+        <!-- Image indicators -->
+        <div class="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+          ${images.map((_, idx) => `
+            <button class="carousel-indicator w-1.5 h-1.5 rounded-full ${idx === 0 ? 'bg-white' : 'bg-white/50'}" data-index="${idx}" aria-label="Go to image ${idx + 1}"></button>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
   
   return `
     <div class="bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden w-full max-w-[calc(100vw-2rem)] sm:max-w-sm relative" style="font-family: system-ui, -apple-system, sans-serif;">
-      ${imageUrl ? `
-        <div class="w-full h-24 sm:h-32 bg-gradient-to-br from-orange-100 to-red-100 overflow-hidden">
-          <img src="${imageUrl}" class="w-full h-full object-cover" alt="${gym.name || 'Gym'}" />
-        </div>
-      ` : ''}
+      ${createImageCarousel(images)}
       
       <div class="p-3 sm:p-4 space-y-2 sm:space-y-3 pb-10 sm:pb-12">
         <!-- Gym Header -->

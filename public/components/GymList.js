@@ -2,10 +2,14 @@
 import { getStinkScore, stinkBgStyleAttr, inBbox, formatDistance, haversineMeters } from '../lib/utils.js';
 import { useAppStore } from '../store/index.js';
 import { MAP_CONFIG } from '../lib/constants.js';
+import { getSmellText, getSmellColors, getDifficultyText, getDifficultyColors } from './map/PopupContent.js';
+import { fetchGymsByRegion } from '../services/api.js';
 
 export function createGymList(map) {
   const $list = document.getElementById('gymList');
   let all = [];
+  let regionGyms = []; // Store all gyms in the current region
+  let currentRegion = null; // Store current region key to detect changes
   let onGymClickFn = null;
   let currentMode = 'stinky'; // 'stinky' or 'difficulty'
   let sortOrder = 'desc'; // 'asc' or 'desc'
@@ -39,7 +43,7 @@ export function createGymList(map) {
     render();
   }
 
-  function render() {
+  async function render() {
     if (!$list) return;
     const $container = document.getElementById('gymListContainer');
     const $headerMobile = document.getElementById('gymListHeader');
@@ -59,8 +63,33 @@ export function createGymList(map) {
     const isStateLevel = zoom >= 8 && zoom < MAP_CONFIG.CITY_ZOOM_THRESHOLD;
     const isCityLevel = zoom >= MAP_CONFIG.CITY_ZOOM_THRESHOLD;
     
-    // Find gyms near the center to determine the region
-    const gymsInView = all.filter(g => inBbox(g, b));
+    // Find gyms near the center (small bbox around center) to determine the region
+    // Use a small bbox around the center instead of the entire viewport
+    const centerLng = center.lng;
+    const centerLat = center.lat;
+    const bboxSize = 0.1; // Small bbox around center (about 10km)
+    const centerBbox = {
+      getWest: () => centerLng - bboxSize,
+      getSouth: () => centerLat - bboxSize,
+      getEast: () => centerLng + bboxSize,
+      getNorth: () => centerLat + bboxSize,
+    };
+    const gymsNearCenter = all.filter(g => inBbox(g, centerBbox));
+    
+    // Fallback: if no gyms near center, use closest gyms
+    let gymsInView;
+    if (gymsNearCenter.length === 0) {
+      // Find closest gyms to center
+      const gymsWithDistance = all.map(g => {
+        if (g.lat == null || g.lng == null) return { gym: g, distance: Infinity };
+        const distance = haversineMeters(centerLat, centerLng, g.lat, g.lng);
+        return { gym: g, distance };
+      });
+      gymsWithDistance.sort((a, b) => a.distance - b.distance);
+      gymsInView = gymsWithDistance.slice(0, 10).map(item => item.gym);
+    } else {
+      gymsInView = gymsNearCenter;
+    }
     
     if (gymsInView.length === 0) {
       if ($container) $container.classList.add('hidden');
@@ -68,7 +97,7 @@ export function createGymList(map) {
       return;
     }
     
-    // Find the most common region based on zoom level
+    // Find the most common region based on zoom level from gyms near center
     // Country level: use country_code only
     // State level: use state + country_code
     // City level: use city + country_code (fallback to state + country_code)
@@ -141,35 +170,63 @@ export function createGymList(map) {
       }
     }
     
-    // Filter gyms by region (match by city+country, state+country, or country only)
-    const regionGyms = all.filter(g => {
-      const gymCountry = g.country_code || 'Unknown';
-      
-      if (isCountryLevel) {
-        // Country level: match by country only
-        return gymCountry === regionCountry;
-      } else if (isStateLevel) {
-        // State level: match by state+country
-        if (regionState) {
-          return g.state && g.state.trim() === regionState && gymCountry === regionCountry;
-        } else {
-          // Fallback to country only
-          return gymCountry === regionCountry;
-        }
-      } else {
-        // City level: match by city+country or state+country
-        if (regionCity) {
-          // Match by city and country
-          return g.city && g.city.trim() === regionCity && gymCountry === regionCountry;
-        } else if (regionState) {
-          // Match by state and country
-          return g.state && g.state.trim() === regionState && gymCountry === regionCountry;
-        } else {
-          // Fallback to country only
-          return gymCountry === regionCountry;
-        }
+    // Create region key to detect changes
+    const regionKey = `${regionCountry || ''}-${regionState || ''}-${regionCity || ''}`;
+    
+    // Fetch all gyms in the region if region changed
+    if (regionKey !== currentRegion) {
+      currentRegion = regionKey;
+      try {
+        const regionFeatures = await fetchGymsByRegion(regionCountry, regionState, regionCity);
+        regionGyms = regionFeatures.features.map(f => ({
+          id: f.properties.id,
+          name: f.properties.name,
+          address: f.properties.address,
+          city: f.properties.city,
+          state: f.properties.state,
+          country_code: f.properties.country_code,
+          tel: f.properties.tel,
+          image: f.properties.image,
+          lng: f.geometry.coordinates[0],
+          lat: f.geometry.coordinates[1],
+          smell_avg: f.properties.smell_avg,
+          smell_votes: f.properties.smell_votes || 0,
+          difficulty_avg: f.properties.difficulty_avg,
+          difficulty_votes: f.properties.difficulty_votes || 0,
+          parking_availability_avg: f.properties.parking_availability_avg,
+          parking_votes: f.properties.parking_votes || 0,
+          pet_friendly_avg: f.properties.pet_friendly_avg,
+          pet_friendly_votes: f.properties.pet_friendly_votes || 0,
+          styles: f.properties.styles,
+          style_vote_count: f.properties.style_vote_count || 0,
+          utilities: f.properties.utilities || {},
+        }));
+      } catch (error) {
+        console.error('Error fetching gyms by region:', error);
+        // Fallback to filtering from all gyms in viewport
+        regionGyms = all.filter(g => {
+          const gymCountry = g.country_code || 'Unknown';
+          
+          if (isCountryLevel) {
+            return gymCountry === regionCountry;
+          } else if (isStateLevel) {
+            if (regionState) {
+              return g.state && g.state.trim() === regionState && gymCountry === regionCountry;
+            } else {
+              return gymCountry === regionCountry;
+            }
+          } else {
+            if (regionCity) {
+              return g.city && g.city.trim() === regionCity && gymCountry === regionCountry;
+            } else if (regionState) {
+              return g.state && g.state.trim() === regionState && gymCountry === regionCountry;
+            } else {
+              return gymCountry === regionCountry;
+            }
+          }
+        });
       }
-    });
+    }
     
     let displayGyms;
     
@@ -311,17 +368,39 @@ export function createGymList(map) {
             ${g.address ? `<div class="text-xs text-gray-500 truncate mt-0.5">${g.address}</div>` : ''}
             ${g.distance != null ? `<div class="text-xs text-gray-600 mt-0.5">📍 ${formatDistance(g.distance)}</div>` : ''}
             <div class="flex items-center gap-2 sm:gap-3 mt-1 sm:mt-1.5">
-              ${g.smell_avg !== null ? `
-                <div class="flex items-center gap-1">
-                  <span class="text-xs font-medium" style="color:#dc2626">💨 ${g.smell_avg}</span>
-                  <span class="text-xs text-gray-400">(${g.smell_votes || 0})</span>
-                </div>
-              ` : ''}
-              ${g.difficulty_avg !== null ? `
-                <div class="flex items-center gap-1">
-                  <span class="text-xs font-medium text-gray-700">📊 ${g.difficulty_avg > 0 ? '+' : ''}${g.difficulty_avg}</span>
-                </div>
-              ` : ''}
+              ${currentMode === 'stinky' && g.smell_avg !== null ? (() => {
+                const smellText = getSmellText(g.smell_avg);
+                const smellColors = getSmellColors(g.smell_avg);
+                // Choose icon based on stink level
+                let stinkIcon = '💨'; // Default icon
+                if (smellText === 'Cave of Despair') {
+                  stinkIcon = '💩'; // Poop icon for worst smell
+                } else if (smellText === 'Fresh') {
+                  stinkIcon = '🌿'; // Grass icon for fresh
+                }
+                return `
+                  <div class="flex items-center gap-1">
+                    <span class="text-xs font-medium ${smellColors.text}">${stinkIcon} ${smellText}</span>
+                    <span class="text-xs text-gray-400">(${g.smell_votes || 0})</span>
+                  </div>
+                `;
+              })() : ''}
+              ${currentMode === 'difficulty' && g.difficulty_avg !== null ? (() => {
+                const difficultyText = getDifficultyText(g.difficulty_avg);
+                const difficultyColors = getDifficultyColors(g.difficulty_avg);
+                // Choose icon based on difficulty level
+                let difficultyIcon = '🧗'; // Default icon (climber for Average)
+                if (difficultyText.includes('Hard')) {
+                  difficultyIcon = '🪨'; // Rock icon for all hard levels (Bit Hard, Hard, Super Hard)
+                } else if (difficultyText.includes('Soft')) {
+                  difficultyIcon = '🪜'; // Staircase icon for all soft levels (Super Soft, Soft, Bit Soft)
+                }
+                return `
+                  <div class="flex items-center gap-1">
+                    <span class="text-xs font-medium ${difficultyColors.text}">${difficultyIcon} ${difficultyText}</span>
+                  </div>
+                `;
+              })() : ''}
             </div>
           </div>
           <div class="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">

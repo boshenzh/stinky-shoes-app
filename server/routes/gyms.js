@@ -794,6 +794,64 @@ export function createGymsRouter(pool, hasPassword, verifyPassword) {
   // SPECIFIC ROUTES - Must come BEFORE parameterized routes like /:id
   // ============================================================================
   
+  // GET gyms by region: /api/gyms/by-region?country=CN&state=Beijing&city=Beijing
+  // Parameters are optional and filter progressively (country -> state -> city)
+  router.get('/by-region', async (req, res) => {
+    try {
+      const country = typeof req.query?.country === 'string' ? req.query.country.trim() : null;
+      const state = typeof req.query?.state === 'string' ? req.query.state.trim() : null;
+      const city = typeof req.query?.city === 'string' ? req.query.city.trim() : null;
+      const styleColumnsExist = await hasStyleColumns(pool);
+      
+      if (!country) {
+        return res.status(400).json({ error: 'country parameter is required' });
+      }
+      
+      // Build query with region filters
+      // The base query uses CTEs, so we need to add WHERE to the base CTE
+      const baseQuery = buildGymQuery(null, styleColumnsExist);
+      let q = baseQuery.q; // Get base query without bbox
+      const params = [];
+      
+      // Build WHERE conditions for region filtering
+      let whereConditions = [];
+      
+      // Filter by country
+      whereConditions.push(`country_code = $${params.length + 1}`);
+      params.push(country);
+      
+      // Filter by state if provided
+      if (state) {
+        whereConditions.push(`state = $${params.length + 1}`);
+        params.push(state);
+      }
+      
+      // Filter by city if provided
+      if (city) {
+        whereConditions.push(`city = $${params.length + 1}`);
+        params.push(city);
+      }
+      
+      // Add WHERE clause to the base CTE
+      // The base CTE is defined as: "base as (select ... from gyms)"
+      // We need to add WHERE after "from gyms" but before any closing parenthesis
+      const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
+      
+      // Find "from gyms" in the base CTE and add WHERE clause after it
+      // Match "from gyms" followed by optional whitespace and optional newline
+      // We need to be careful to match the first occurrence in the base CTE
+      q = q.replace(/(base as\s*\([^)]*from gyms)([\s\n]*)/i, (match, prefix, whitespace) => {
+        return `${prefix}${whitespace}${whereClause}${whitespace}`;
+      });
+      
+      const { rows } = await pool.query(q, params);
+      return res.json(rows);
+    } catch (e) {
+      console.error('Error fetching gyms by region:', e);
+      res.status(500).json({ error: 'server_error' });
+    }
+  });
+
   // GET all gym IDs that a user has voted on (MUST be before /:id to avoid route conflict)
   router.get('/voted-gyms', async (req, res) => {
     try {
@@ -851,7 +909,8 @@ export function createGymsRouter(pool, hasPassword, verifyPassword) {
           select id, provider, provider_poi_id, name, address, city, state, country_code, phone, type,
                  ST_X(ST_AsText(geom::geometry)) as lng,
                  ST_Y(ST_AsText(geom::geometry)) as lat,
-                 image_primary_url
+                 image_primary_url,
+                 raw
           from gyms
           where id = $1
         ),

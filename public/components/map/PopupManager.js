@@ -13,6 +13,47 @@ function ensureHttps(url) {
 }
 
 // Helper functions
+// Initialize image carousel
+function initImageCarousel(carousel) {
+  const slides = carousel.querySelector('.carousel-slides');
+  const prevBtn = carousel.querySelector('.carousel-prev');
+  const nextBtn = carousel.querySelector('.carousel-next');
+  const indicators = carousel.querySelectorAll('.carousel-indicator');
+  const totalImages = parseInt(carousel.dataset.totalImages || '1', 10);
+  let currentIndex = 0;
+  
+  function updateCarousel() {
+    if (slides) {
+      slides.style.transform = `translateX(-${currentIndex * 100}%)`;
+    }
+    indicators.forEach((ind, idx) => {
+      ind.classList.toggle('bg-white', idx === currentIndex);
+      ind.classList.toggle('bg-white/50', idx !== currentIndex);
+    });
+  }
+  
+  prevBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    currentIndex = (currentIndex - 1 + totalImages) % totalImages;
+    updateCarousel();
+  });
+  
+  nextBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    currentIndex = (currentIndex + 1) % totalImages;
+    updateCarousel();
+  });
+  
+  indicators.forEach((ind, idx) => {
+    ind.addEventListener('click', (e) => {
+      e.stopPropagation();
+      currentIndex = idx;
+      updateCarousel();
+    });
+  });
+}
+
+// Helper functions
 function normalizeGymData(gymFeature) {
   const imageUrl = gymFeature.properties.image_primary_url || gymFeature.properties.image;
   return {
@@ -23,6 +64,7 @@ function normalizeGymData(gymFeature) {
     country_code: gymFeature.properties.country_code,
     tel: gymFeature.properties.tel,
     image: ensureHttps(imageUrl),
+    raw: gymFeature.properties.raw || null, // Include raw data for image extraction
     smell_avg: gymFeature.properties.smell_avg,
     smell_votes: gymFeature.properties.smell_votes,
     difficulty_avg: gymFeature.properties.difficulty_avg,
@@ -125,6 +167,15 @@ async function refreshPopupForGym(gymId) {
       const gym = normalizeGymData(gymFeature);
       const popupContent = createPopupContent(gym);
       gymPopup.setHTML(popupContent);
+      
+      // Initialize image carousel if it exists
+      setTimeout(() => {
+        const carousel = gymPopup._container?.querySelector('[data-carousel-id]');
+        if (carousel) {
+          initImageCarousel(carousel);
+        }
+      }, 100);
+      
       attachVoteButtonHandler(gym);
     } catch (err) {
       console.error('Failed to refresh popup:', err);
@@ -204,6 +255,15 @@ async function refreshPopupForGym(gymId) {
       const gym = normalizeGymData(gymFeature);
       const popupContent = createPopupContent(gym);
       gymPopup.setHTML(popupContent);
+      
+      // Initialize image carousel if it exists
+      setTimeout(() => {
+        const carousel = gymPopup._container?.querySelector('[data-carousel-id]');
+        if (carousel) {
+          initImageCarousel(carousel);
+        }
+      }, 100);
+      
       attachVoteButtonHandler(gym);
       pendingGymId = null; // Clear pending flag on success
     } catch (err) {
