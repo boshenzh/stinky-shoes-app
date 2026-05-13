@@ -34,6 +34,15 @@
     <!-- Favicon and Icons -->
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/favicon.ico" />
+
+    <!-- Agent-readable docs (injected at runtime so Vite's HTML asset transformer
+         doesn't inline /llms.txt as a base64 data URL during build). -->
+    <script>
+      document.head.insertAdjacentHTML(
+        'beforeend',
+        '<link rel="alternate" type="text/llms" href="/llms.txt">'
+      );
+    </script>
     
     <!-- Structured Data (JSON-LD) -->
     <script type="application/ld+json">
@@ -68,6 +77,14 @@
       window.feedbackfin.config.url = '/api/feedback';
       // Only show "idea" button, hide "bug" and other tabs
       window.feedbackfin.config.types = ['idea'];
+    </script>
+
+    <!-- DataFast Analytics -->
+    <script
+      defer
+      data-website-id="dfid_0gaUB3sdHZQeFHgEkwRa3"
+      data-domain="yourshoesmells.com"
+      src="https://datafa.st/js/script.js">
     </script>
   </head>
   <body>
@@ -127,6 +144,16 @@
       </div>
     </div>
 
+
+    <!-- Agent / API docs link (low-key) -->
+    <div class="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 text-xs text-gray-500 select-none pointer-events-none">
+      <span class="pointer-events-auto bg-white/80 backdrop-blur-sm rounded-full px-3 py-1 shadow-sm border border-gray-200/60">
+        agents:
+        <a href="/llms.txt" class="underline hover:text-gray-800">llms.txt</a>
+        ·
+        <a href="/docs/agents/README.md" class="underline hover:text-gray-800">api docs</a>
+      </span>
+    </div>
 
     <!-- Feedback and Coffee buttons container - positioned side by side -->
     <div class="fixed bottom-4 right-4 z-50 flex items-center gap-2">
