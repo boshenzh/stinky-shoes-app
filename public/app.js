@@ -135,9 +135,8 @@ async function initApp() {
     // Set password modal reference in map manager (for vote button login redirect)
     mapManager.setPasswordModal(passwordModal);
     
-    // Initialize account modal (passes passwordModal so the token section can
-    // redirect the user to set/reset a password when needed).
-    const accountModal = createAccountModal({ passwordModal });
+    // Initialize account modal
+    const accountModal = createAccountModal();
     
     // Wire up password setup button in account modal
     accountModal.onSetupPassword(() => {

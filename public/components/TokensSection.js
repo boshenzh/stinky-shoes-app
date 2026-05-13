@@ -1,6 +1,7 @@
 // API Token management section, embedded inside the Account modal.
 // One token per user. States: loading → (empty | has-token | create-form | reveal | revoke-confirm | rotate-confirm | needs-password | error).
 import { listTokens, createToken, rotateToken, revokeToken } from '../services/api.js';
+import { useAuth } from '../store/index.js';
 import { toast } from './Toast.js';
 
 const NAME_MAXLEN = 64;
@@ -25,7 +26,7 @@ function humanizeRelativeTime(iso) {
   return new Date(iso).toLocaleDateString();
 }
 
-export function createTokensSection({ container, auth, onNeedPassword }) {
+export function createTokensSection({ container } = {}) {
   if (!container) {
     return { mount() {}, unmount() {}, refresh() {} };
   }
@@ -45,10 +46,11 @@ export function createTokensSection({ container, auth, onNeedPassword }) {
     render();
   }
 
-  // Re-read auth at each call — the user may have logged in / set a password since mount().
+  // Re-read auth state fresh each call — useAuth() returns a snapshot, so we
+  // re-invoke it to pick up password changes the user just made.
   function currentCreds() {
-    const { username, password } = auth || {};
-    return { username, password };
+    const a = useAuth();
+    return { username: a.username, password: a.password };
   }
 
   async function load() {
@@ -139,11 +141,8 @@ export function createTokensSection({ container, auth, onNeedPassword }) {
   function viewNeedsPassword() {
     return `
       <div class="px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs sm:text-sm text-amber-800 leading-snug">
-        Set a password on your account first — API tokens need it.
+        Set a password on your account first — API tokens need it. Use the button below ↓
       </div>
-      <button data-act="need-password" class="mt-2 w-full px-3 py-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-xs sm:text-sm font-semibold rounded-lg shadow-sm active:scale-95 touch-manipulation">
-        Set / reset password
-      </button>
     `;
   }
 
@@ -279,7 +278,6 @@ export function createTokensSection({ container, auth, onNeedPassword }) {
           case 'revoke-open':   return onRevokeClick();
           case 'cancel':        return onBack();
           case 'reload':        return load();
-          case 'need-password': return onNeedPassword?.();
           case 'do-create': {
             const name = container.querySelector('[data-role="name"]')?.value?.trim() || '';
             if (!name) return setState({ error: 'Name is required.' });

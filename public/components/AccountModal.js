@@ -4,7 +4,7 @@ import { useAuth } from '../store/index.js';
 import { toast } from './Toast.js';
 import { createTokensSection } from './TokensSection.js';
 
-export function createAccountModal({ passwordModal } = {}) {
+export function createAccountModal() {
   const modal = document.getElementById('accountModal');
   const closeBtn = document.getElementById('closeAccountModal');
   const usernameEl = document.getElementById('accountUsername');
@@ -227,18 +227,11 @@ export function createAccountModal({ passwordModal } = {}) {
       }
 
       // Mount/refresh the token-management section.
+      // It reads auth state internally via useAuth() so it picks up password
+      // changes made through the existing Setup/Reset Password flow.
       if (tokenContainer) {
         if (!tokensSection) {
-          tokensSection = createTokensSection({
-            container: tokenContainer,
-            auth,
-            onNeedPassword: () => {
-              hide();
-              if (passwordModal?.show) {
-                passwordModal.show(auth.password ? 'login' : 'register', auth.username);
-              }
-            },
-          });
+          tokensSection = createTokensSection({ container: tokenContainer });
         }
         tokensSection.mount();
       }
