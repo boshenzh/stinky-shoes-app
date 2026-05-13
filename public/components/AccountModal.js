@@ -1,9 +1,10 @@
-// Account Modal - shows user stats, regions, farthest gyms, and password setup
+// Account Modal - shows user stats, regions, farthest gyms, API token management, and password setup
 import { fetchUserStats } from '../services/api.js';
 import { useAuth } from '../store/index.js';
 import { toast } from './Toast.js';
+import { createTokensSection } from './TokensSection.js';
 
-export function createAccountModal() {
+export function createAccountModal({ passwordModal } = {}) {
   const modal = document.getElementById('accountModal');
   const closeBtn = document.getElementById('closeAccountModal');
   const usernameEl = document.getElementById('accountUsername');
@@ -12,6 +13,11 @@ export function createAccountModal() {
   const farthestGymsEl = document.getElementById('accountFarthestGyms');
   const stinkiestGymEl = document.getElementById('accountStinkiestGym');
   const setupPasswordBtn = document.getElementById('accountSetupPasswordBtn');
+  const tokenContainer = document.getElementById('accountTokenSection');
+
+  // Lazy-instantiated; auth state is captured at show() time and re-checked
+  // by the section itself on each load.
+  let tokensSection = null;
 
   // Create pie chart for region distribution
   function createRegionPieChart(regionStats) {
@@ -219,6 +225,23 @@ export function createAccountModal() {
           </div>
         `;
       }
+
+      // Mount/refresh the token-management section.
+      if (tokenContainer) {
+        if (!tokensSection) {
+          tokensSection = createTokensSection({
+            container: tokenContainer,
+            auth,
+            onNeedPassword: () => {
+              hide();
+              if (passwordModal?.show) {
+                passwordModal.show(auth.password ? 'login' : 'register', auth.username);
+              }
+            },
+          });
+        }
+        tokensSection.mount();
+      }
     } catch (error) {
       console.error('Error loading account stats:', error);
       console.error('Error details:', error.message, error.stack);
@@ -239,6 +262,8 @@ export function createAccountModal() {
   // Hide modal
   function hide() {
     modal?.classList.add('hidden');
+    // Drop any in-memory raw token from the reveal screen.
+    tokensSection?.unmount();
   }
 
   // Wire up event listeners

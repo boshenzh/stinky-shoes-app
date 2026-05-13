@@ -228,4 +228,7 @@ CREATE TABLE IF NOT EXISTS api_tokens (
 CREATE INDEX IF NOT EXISTS api_tokens_user_id_idx ON api_tokens(user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS api_tokens_active_hash_idx
   ON api_tokens(token_hash) WHERE revoked_at IS NULL;
+-- At most one active token per user.
+CREATE UNIQUE INDEX IF NOT EXISTS api_tokens_one_active_per_user_idx
+  ON api_tokens(user_id) WHERE revoked_at IS NULL;
 

@@ -196,13 +196,29 @@ Mint an API token. Requires body credentials (no token can mint a token).
 
 Body: `{ "username", "password", "name" }`. Response: `{ id, name, token_prefix, created_at, token }`. The `token` is the raw value — **store it now**. See [auth.md → step 2](./auth.md#2-mint-an-api-token).
 
+**At most one active token per user.** If you already have one, this returns `409 { "error": "token_exists" }`. Use rotate (below) to replace it, or revoke first.
+
+### `POST /api/auth/tokens/rotate`
+
+Atomically revoke the existing active token (if any) and mint a new one. The same as calling revoke then mint, but in one transaction so there's never a moment where you have two active tokens.
+
+Body: `{ "username", "password", "name"? }`. If `name` is omitted, the new token inherits the previous one's name (or defaults to `"api-token"` if there was none). Response: identical shape to mint, including the raw `token` shown once.
+
 ### `GET /api/auth/tokens`
 
-List your active tokens. Bearer required. Returns `[{ id, name, token_prefix, last_used_at, created_at }]`. The raw token is never returned.
+List your active tokens. **Bearer required** — use this from a CLI / agent that already has a token. Returns `[{ id, name, token_prefix, last_used_at, created_at }]` (0 or 1 element). The raw token is never returned.
+
+### `POST /api/auth/tokens/list`
+
+Same as GET above but takes body credentials instead of Bearer — used by the browser web app. Body: `{ "username", "password" }`.
 
 ### `DELETE /api/auth/tokens/:id`
 
-Revoke a token you own. Bearer required. Returns `{ "ok": true }` or `404 not_found`.
+Revoke a token you own. **Bearer required.** Returns `{ "ok": true }` or `404 not_found`.
+
+### `POST /api/auth/tokens/:id/revoke`
+
+Same as DELETE above but takes body credentials — used by the browser web app. Body: `{ "username", "password" }`. Returns `{ "ok": true }` or `404 not_found`.
 
 ## Notes
 

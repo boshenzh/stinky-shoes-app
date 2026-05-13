@@ -2,6 +2,7 @@
 import express from 'express';
 import { hasStyleColumns } from '../lib/db-helpers.js';
 import { resolveActor } from '../lib/auth-helpers.js';
+import { enforceWriteRate } from '../lib/rate-limit.js';
 
 const router = express.Router();
 
@@ -640,9 +641,14 @@ export function createGymsRouter(pool, hasPassword, verifyPassword) {
       const user = { id: actor.user.id, username: actor.user.username };
       const username = actor.user.username;
 
+      const rate = await enforceWriteRate(pool, user.id);
+      if (!rate.ok) {
+        return res.status(rate.status).json({ error: rate.error, retry_after_seconds: rate.retry_after_seconds });
+      }
+
       // Check if using user_id (normalized) or username (backwards compatibility)
       const hasUserId = await pool.query(`
-        SELECT column_name FROM information_schema.columns 
+        SELECT column_name FROM information_schema.columns
         WHERE table_name = 'gym_utility_votes' AND column_name = 'user_id'
       `).then(r => r.rows.length > 0);
 
@@ -1143,6 +1149,11 @@ export function createGymsRouter(pool, hasPassword, verifyPassword) {
       const user = { id: actor.user.id, username: actor.user.username };
       const username = actor.user.username;
 
+      const rate = await enforceWriteRate(pool, user.id);
+      if (!rate.ok) {
+        return res.status(rate.status).json({ error: rate.error, retry_after_seconds: rate.retry_after_seconds });
+      }
+
       // Validate and extract vote fields
       const smell = req.body?.smell !== undefined ? Number(req.body.smell) : null;
       if (smell !== null && (!Number.isFinite(smell) || smell < 0 || smell > 100)) {
@@ -1352,6 +1363,11 @@ export function createGymsRouter(pool, hasPassword, verifyPassword) {
       const actor = await resolveActor(req, pool, { hasPassword, verifyPassword });
       if (!actor.ok) return res.status(actor.status).json({ error: actor.error });
       const username = actor.user.username;
+
+      const rate = await enforceWriteRate(pool, actor.user.id);
+      if (!rate.ok) {
+        return res.status(rate.status).json({ error: rate.error, retry_after_seconds: rate.retry_after_seconds });
+      }
 
       // Use upsert pattern: try UPDATE first, then INSERT if needed
       const updateResult = await pool.query(

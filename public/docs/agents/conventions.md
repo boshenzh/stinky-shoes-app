@@ -37,10 +37,25 @@ All errors return JSON `{ "error": "<machine-readable code or message>" }`. Comm
 | `400` | `username is required`, `smell must be 0..100`, ... | Validation failure. |
 | `401` | `invalid_token`, `Invalid username or password`, `Password required for this account` | Auth failure. |
 | `404` | `Gym not found`, `not_found` | Resource not found. |
-| `409` | `You have already voted for this gym` | Unique-constraint conflict. |
+| `409` | `token_exists`, `You have already voted for this gym` | Unique-constraint conflict. |
+| `429` | `rate_limited` | Per-user write rate exceeded. Includes `retry_after_seconds`. |
 | `500` | `server_error` | Unexpected server error. |
 
 Successful responses do not have an `error` field. Many endpoints return `{ "ok": true, ... }`.
+
+## Rate limit
+
+Each user is capped at **60 write requests per rolling hour**, combined across `POST /api/gyms/:id/vote`, `POST /api/gyms/:id/utility-vote`, and `POST /api/gyms/:id/smell`. Reads have no limit.
+
+Re-voting on a gym you've already rated does **not** consume budget — only voting on a *new* gym counts (the UPDATE path doesn't touch `created_at`).
+
+Exceeding the cap returns:
+
+```
+429 { "error": "rate_limited", "retry_after_seconds": 3600 }
+```
+
+The cap is per `user_id`, so minting another token does not get you more budget — and besides, only one active token is allowed per user anyway.
 
 ## CORS
 

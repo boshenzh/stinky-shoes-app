@@ -5,6 +5,10 @@ The Your Shoe Smells API supports two credential styles. Pick based on what you'
 - **API tokens** (`Authorization: Bearer yss_live_…`) — recommended for scripts, agents, and CLIs. Long-lived, revocable, scoped to one user.
 - **Body credentials** (`{ "username": "...", "password": "..." }`) — used by the browser web app. Works without an extra setup step but exposes your real password on every write.
 
+> **Easiest path if you have a browser:** log into [yourshoesmells.com](https://yourshoesmells.com), open the account menu, find the **🔑 API Token** section. Click **Create**, give your token a name, copy the value, paste it into your agent. Use **Rotate** to replace it, **Revoke** to kill it. The curl flow below covers the same thing for headless setups.
+
+**Policy:** each account has at most **one active token at a time.** If you already have one, `POST /api/auth/tokens` returns `409 { "error": "token_exists" }` — use `POST /api/auth/tokens/rotate` to replace it, or revoke first.
+
 This guide walks through the token flow end to end.
 
 ## 1. Create a username (and optionally set a password)
@@ -99,9 +103,24 @@ curl -X DELETE -H 'Authorization: Bearer yss_live_…' \
 
 Response: `{ "ok": true }`. After revocation, any request bearing that token returns 401.
 
+## 6. Rotate a token
+
+Replaces the existing active token with a new one in a single transaction. Use this when you suspect your token leaked, or when the current one is going to a different agent.
+
+`POST /api/auth/tokens/rotate`
+
+```sh
+curl -X POST https://yourshoesmells.com/api/auth/tokens/rotate \
+  -H 'content-type: application/json' \
+  -d '{"username":"alice","password":"correct-horse-battery","name":"new-agent"}'
+```
+
+`name` is optional; if omitted, the new token inherits the old token's name. Response shape matches mint — the new raw token is shown once. The old token is dead the instant this call returns.
+
 ## Threat model and design notes
 
 - Tokens are 128 bits of cryptographic randomness, hex-encoded. Server-side only the SHA-256 hash is stored; no bcrypt, because the entropy is already far above brute-force range.
 - Revocation flips `revoked_at`; the partial unique index on `token_hash` allows minting a fresh token without colliding with an old one.
+- A partial unique index on `(user_id) WHERE revoked_at IS NULL` keeps the "one active token per user" rule at the DB layer — a stuck retry can never produce a duplicate.
 - `last_used_at` is updated fire-and-forget on each successful request so it never blocks the response.
-- There is no rate limiting yet — please be polite.
+- Per-user write rate limit: 60 requests / rolling hour, combined across vote / utility-vote / smell. See [conventions.md](./conventions.md#rate-limit) for details.

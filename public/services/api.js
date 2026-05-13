@@ -369,3 +369,61 @@ export async function checkUser(username) {
   return res.json();
 }
 
+// API Token management (body-credential endpoints used by the browser).
+// The raw token in createToken / rotateToken responses is shown ONCE.
+
+async function readJsonOrEmpty(res) {
+  try { return await res.json(); } catch { return {}; }
+}
+
+function throwApiError(body, res, fallback) {
+  const err = new Error(body.message || body.error || `${fallback}: ${res.status}`);
+  err.status = res.status;
+  err.code = body.error;
+  throw err;
+}
+
+export async function listTokens({ username, password }) {
+  const res = await fetch('/api/auth/tokens/list', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  const body = await readJsonOrEmpty(res);
+  if (!res.ok) throwApiError(body, res, 'List tokens failed');
+  return body;
+}
+
+export async function createToken({ username, password, name }) {
+  const res = await fetch('/api/auth/tokens', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password, name }),
+  });
+  const body = await readJsonOrEmpty(res);
+  if (!res.ok) throwApiError(body, res, 'Create token failed');
+  return body;
+}
+
+export async function rotateToken({ username, password, name } = {}) {
+  const res = await fetch('/api/auth/tokens/rotate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password, name: name || null }),
+  });
+  const body = await readJsonOrEmpty(res);
+  if (!res.ok) throwApiError(body, res, 'Rotate token failed');
+  return body;
+}
+
+export async function revokeToken(id, { username, password }) {
+  const res = await fetch(`/api/auth/tokens/${encodeURIComponent(id)}/revoke`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  const body = await readJsonOrEmpty(res);
+  if (!res.ok) throwApiError(body, res, 'Revoke token failed');
+  return body;
+}
+
