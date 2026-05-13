@@ -7,6 +7,8 @@ import { hashPassword, verifyPassword, hasPassword } from "./lib/password.js";
 import { createAuthRouter } from "./server/routes/auth.js";
 import { createGymsRouter } from "./server/routes/gyms.js";
 import { createFeedbackRouter } from "./server/routes/feedback.js";
+import { createTokensRouter } from "./server/routes/tokens.js";
+import { createBearerMiddleware } from "./server/middleware/bearer.js";
 
 dotenv.config();
 
@@ -59,7 +61,14 @@ function getPool() {
 
 const pool = getPool();
 
+// Resolve Authorization: Bearer ... into req.user before any route runs.
+app.use(createBearerMiddleware(pool));
+
 // --- Route Modules ---
+// Token management is more specific than /api/auth, mount it first.
+const tokensRouter = createTokensRouter(pool, { hasPassword, verifyPassword });
+app.use('/api/auth/tokens', tokensRouter);
+
 // Register authentication routes
 const authRouter = createAuthRouter(pool);
 app.use('/api/auth', authRouter);

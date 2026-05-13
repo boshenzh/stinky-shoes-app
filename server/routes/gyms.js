@@ -1,6 +1,7 @@
 // Gym routes - handles gym CRUD and voting endpoints
 import express from 'express';
-import { hasStyleColumns, getOrCreateUser } from '../lib/db-helpers.js';
+import { hasStyleColumns } from '../lib/db-helpers.js';
+import { resolveActor } from '../lib/auth-helpers.js';
 
 const router = express.Router();
 
@@ -377,18 +378,7 @@ export function createGymsRouter(pool, hasPassword, verifyPassword) {
   //   2. More specific parameterized: /:id/my-vote, /:id/utility-vote
   //   3. Catch-all parameterized LAST: /:id
   // ============================================================================
-  
-  // Helper function to verify user password
-  async function verifyUserPassword(user, password) {
-    if (!hasPassword(user.password_hash)) {
-      return true; // No password set, allow access
-    }
-    if (!password) {
-      return false; // Password required but not provided
-    }
-    return verifyPassword(password, user.password_hash);
-  }
-  
+
   // GET user account stats (regions, farthest gyms, etc.) - uses user_id as source of truth
   router.get('/user/:user_id/stats', async (req, res) => {
     try {
@@ -635,32 +625,20 @@ export function createGymsRouter(pool, hasPassword, verifyPassword) {
   router.post('/:id/utility-vote', async (req, res) => {
     try {
       const id = req.params.id;
-      const username = typeof req.body?.username === 'string' ? req.body.username.trim() : null;
-      const password = typeof req.body?.password === 'string' ? req.body.password : null;
       const utilityName = typeof req.body?.utility_name === 'string' ? req.body.utility_name.trim() : null;
       const vote = req.body?.vote !== undefined ? Number(req.body.vote) : null;
-      
-      if (!username || username.length === 0) {
-        return res.status(400).json({ error: 'username is required' });
-      }
+
       if (!utilityName || utilityName.length === 0) {
         return res.status(400).json({ error: 'utility_name is required' });
       }
       if (vote !== 1 && vote !== -1) {
         return res.status(400).json({ error: 'vote must be 1 (upvote) or -1 (downvote)' });
       }
-      if (!/^[a-zA-Z0-9_-]{3,20}$/.test(username)) {
-        return res.status(400).json({ error: 'username must be 3-20 alphanumeric characters, underscore, or hyphen' });
-      }
 
-      // Get or create user
-      const user = await getOrCreateUser(pool, username);
-      
-      // Verify password if user has one set
-      const passwordValid = await verifyUserPassword(user, password);
-      if (!passwordValid) {
-        return res.status(401).json({ error: 'Password required for this account' });
-      }
+      const actor = await resolveActor(req, pool, { hasPassword, verifyPassword });
+      if (!actor.ok) return res.status(actor.status).json({ error: actor.error });
+      const user = { id: actor.user.id, username: actor.user.username };
+      const username = actor.user.username;
 
       // Check if using user_id (normalized) or username (backwards compatibility)
       const hasUserId = await pool.query(`
@@ -1155,28 +1133,15 @@ export function createGymsRouter(pool, hasPassword, verifyPassword) {
   });
 
   // POST vote: { smell?, difficulty?, parking_availability?, pet_friendly?, styles?: string[], username, password? }
+  // Bearer auth (Authorization: Bearer yss_live_...) is also accepted; username/password may be omitted in that case.
   router.post('/:id/vote', async (req, res) => {
     try {
       const id = req.params.id;
-      const username = typeof req.body?.username === 'string' ? req.body.username.trim() : null;
-      const password = typeof req.body?.password === 'string' ? req.body.password : null;
-      
-      if (!username || username.length === 0) {
-        return res.status(400).json({ error: 'username is required' });
-      }
-      // Validate username: alphanumeric, underscore, hyphen, 3-20 chars
-      if (!/^[a-zA-Z0-9_-]{3,20}$/.test(username)) {
-        return res.status(400).json({ error: 'username must be 3-20 alphanumeric characters, underscore, or hyphen' });
-      }
 
-      // Get or create user
-      const user = await getOrCreateUser(pool, username);
-      
-      // Verify password if user has one set
-      const passwordValid = await verifyUserPassword(user, password);
-      if (!passwordValid) {
-        return res.status(401).json({ error: 'Password required for this account' });
-      }
+      const actor = await resolveActor(req, pool, { hasPassword, verifyPassword });
+      if (!actor.ok) return res.status(actor.status).json({ error: actor.error });
+      const user = { id: actor.user.id, username: actor.user.username };
+      const username = actor.user.username;
 
       // Validate and extract vote fields
       const smell = req.body?.smell !== undefined ? Number(req.body.smell) : null;
@@ -1383,21 +1348,19 @@ export function createGymsRouter(pool, hasPassword, verifyPassword) {
       if (!Number.isFinite(smell) || smell < 0 || smell > 100) {
         return res.status(400).json({ error: 'smell must be 0..100' });
       }
-      const username = typeof req.body?.username === 'string' ? req.body.username.trim() : null;
-      if (!username || username.length === 0) {
-        return res.status(400).json({ error: 'username is required' });
-      }
-      if (!/^[a-zA-Z0-9_-]{3,20}$/.test(username)) {
-        return res.status(400).json({ error: 'username must be 3-20 alphanumeric characters, underscore, or hyphen' });
-      }
+
+      const actor = await resolveActor(req, pool, { hasPassword, verifyPassword });
+      if (!actor.ok) return res.status(actor.status).json({ error: actor.error });
+      const username = actor.user.username;
+
       // Use upsert pattern: try UPDATE first, then INSERT if needed
       const updateResult = await pool.query(
-        `UPDATE gym_votes 
+        `UPDATE gym_votes
          SET smell = $2, updated_at = now()
          WHERE gym_id = $1 AND username = $3`,
         [id, smell, username]
       );
-      
+
       // If no rows updated, insert new vote
       if (updateResult.rowCount === 0) {
         await pool.query(

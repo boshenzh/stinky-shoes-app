@@ -195,7 +195,7 @@ BEGIN
 END $$;
 
 -- Gym utility votes unique constraints
-DO $$ 
+DO $$
 BEGIN
   BEGIN
     CREATE UNIQUE INDEX gym_utility_votes_gym_user_utility_unique ON gym_utility_votes(gym_id, user_id, utility_name) WHERE user_id IS NOT NULL;
@@ -203,11 +203,29 @@ BEGIN
   END;
 END $$;
 
-DO $$ 
+DO $$
 BEGIN
   BEGIN
     CREATE UNIQUE INDEX gym_utility_votes_gym_username_utility_unique ON gym_utility_votes(gym_id, username, utility_name) WHERE username IS NOT NULL;
   EXCEPTION WHEN others THEN NULL;
   END;
 END $$;
+
+-- ============================================
+-- 5. API Tokens (bearer credentials for non-browser clients)
+-- ============================================
+CREATE TABLE IF NOT EXISTS api_tokens (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name          text NOT NULL,
+  token_prefix  text NOT NULL,
+  token_hash    text NOT NULL UNIQUE,
+  last_used_at  timestamptz,
+  revoked_at    timestamptz,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS api_tokens_user_id_idx ON api_tokens(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS api_tokens_active_hash_idx
+  ON api_tokens(token_hash) WHERE revoked_at IS NULL;
 

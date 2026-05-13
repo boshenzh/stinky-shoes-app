@@ -1,0 +1,39 @@
+# Your Shoe Smells
+
+> A community map of climbing/bouldering gyms. Anyone can browse gyms; signed-in users can vote on smell, route difficulty, parking, pet-friendliness, and the style mix of the gym (crimpy / dynos / overhang / slab). The HTTP API is open to scripts and agents via long-lived bearer tokens.
+
+The site is at https://yourshoesmells.com. All routes below are relative to that origin (or http://localhost:3000 for local dev).
+
+## Quickstart
+
+```sh
+# 1. Create an account or set a password on an existing username.
+curl -X POST https://yourshoesmells.com/api/auth/register \
+  -H 'content-type: application/json' \
+  -d '{"username":"alice","password":"correct-horse-battery"}'
+
+# 2. Mint a long-lived API token.
+curl -X POST https://yourshoesmells.com/api/auth/tokens \
+  -H 'content-type: application/json' \
+  -d '{"username":"alice","password":"correct-horse-battery","name":"laptop"}'
+# → { "token": "yss_live_…", "id": "…", "token_prefix": "yss_live_xxxxxxxx" }
+# The raw "token" value is shown ONCE. Store it; only its sha256 hash lives in the DB.
+
+# 3. Use the token to vote.
+curl -X POST https://yourshoesmells.com/api/gyms/<gym-uuid>/vote \
+  -H 'Authorization: Bearer yss_live_…' \
+  -H 'content-type: application/json' \
+  -d '{"smell":80,"difficulty":1}'
+```
+
+## Docs
+
+- [API reference](/docs/agents/api.md): every endpoint, with request/response shape and auth requirements.
+- [Auth guide](/docs/agents/auth.md): register, mint, use, and revoke tokens.
+- [Conventions](/docs/agents/conventions.md): base URL, content-type, error shape, CORS.
+- [Index](/docs/agents/README.md): table of contents for the above.
+
+## Optional
+
+- Browser web app: https://yourshoesmells.com
+- Repository: https://github.com/boshenzh/stinky-shoes-app
