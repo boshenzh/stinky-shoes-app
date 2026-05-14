@@ -13,12 +13,18 @@ export function createFeedbackRouter(pool) {
       if (!message || typeof message !== 'string' || message.trim().length === 0) {
         return res.status(400).json({ error: 'message is required' });
       }
+      if (message.trim().length > 2000) {
+        return res.status(400).json({ error: 'message must be 2000 chars or fewer' });
+      }
+      if (feedbackType != null && (typeof feedbackType !== 'string' || feedbackType.length > 50)) {
+        return res.status(400).json({ error: 'feedback_type must be a string of 50 chars or fewer' });
+      }
 
       // Extract user information
       const user = userData.user || {};
       const userId = user.id || null;
-      const userName = user.name || null;
-      const userEmail = user.email || null;
+      const userName = typeof user.name === 'string' ? user.name.slice(0, 100) : null;
+      const userEmail = typeof user.email === 'string' ? user.email.slice(0, 200) : null;
 
       // Insert feedback into database
       const result = await pool.query(

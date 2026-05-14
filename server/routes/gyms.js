@@ -23,6 +23,7 @@ function buildGymQuery(bbox, styleColumnsExist) {
                image_primary_url
         from gyms, box
         where ST_Intersects(geom, box.g)
+          and business_status = 'OPERATIONAL'
       ),
       recent_votes_raw as (
         select gv.gym_id,
@@ -151,15 +152,15 @@ function buildGymQuery(bbox, styleColumnsExist) {
       
       q += `
       select b.*,
-             vs.smell_avg, vs.smell_votes,
-             vs.difficulty_avg, vs.difficulty_votes,
-             vs.parking_availability_avg, vs.parking_votes,
-             vs.pet_friendly_avg, vs.pet_friendly_votes`;
+             vs.smell_avg, coalesce(vs.smell_votes, 0)::int as smell_votes,
+             vs.difficulty_avg, coalesce(vs.difficulty_votes, 0)::int as difficulty_votes,
+             vs.parking_availability_avg, coalesce(vs.parking_votes, 0)::int as parking_votes,
+             vs.pet_friendly_avg, coalesce(vs.pet_friendly_votes, 0)::int as pet_friendly_votes`;
       
       if (styleColumnsExist) {
         q += `,
              sa.styles,
-             sa.style_vote_count`;
+             coalesce(sa.style_vote_count, 0)::int as style_vote_count`;
       } else {
         q += `,
              null::jsonb as styles,
@@ -194,6 +195,7 @@ function buildGymQuery(bbox, styleColumnsExist) {
                ST_Y(ST_AsText(geom::geometry)) as lat,
                image_primary_url
         from gyms
+        where business_status = 'OPERATIONAL'
       ),
       recent_votes_raw as (
         select gv.gym_id,
@@ -323,15 +325,15 @@ function buildGymQuery(bbox, styleColumnsExist) {
       
       q += `
       select b.*,
-             vs.smell_avg, vs.smell_votes,
-             vs.difficulty_avg, vs.difficulty_votes,
-             vs.parking_availability_avg, vs.parking_votes,
-             vs.pet_friendly_avg, vs.pet_friendly_votes`;
+             vs.smell_avg, coalesce(vs.smell_votes, 0)::int as smell_votes,
+             vs.difficulty_avg, coalesce(vs.difficulty_votes, 0)::int as difficulty_votes,
+             vs.parking_availability_avg, coalesce(vs.parking_votes, 0)::int as parking_votes,
+             vs.pet_friendly_avg, coalesce(vs.pet_friendly_votes, 0)::int as pet_friendly_votes`;
       
       if (styleColumnsExist) {
         q += `,
              sa.styles,
-             sa.style_vote_count`;
+             coalesce(sa.style_vote_count, 0)::int as style_vote_count`;
       } else {
         q += `,
              null::jsonb as styles,
@@ -570,8 +572,15 @@ export function createGymsRouter(pool, hasPassword, verifyPassword) {
         const queryResult = buildGymQuery(null, styleColumnsExist);
         q = queryResult.q;
         params = queryResult.params;
+        // The no-bbox path is only used by external API consumers (the web app
+        // always passes a bbox). Without a geographic bound it would dump the
+        // entire table (~17k rows / 11MB), so page it: default 100, max 500.
+        const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
+        const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+        q += ` limit $${params.length + 1} offset $${params.length + 2}`;
+        params.push(limit, offset);
       }
-      
+
       const { rows } = await pool.query(q, params);
       // c  onsole.log(`[API] Fetched ${rows.length} gyms (bbox: ${hasBbox}, styleColumns: ${styleColumnsExist})`);
       return res.json(rows);
@@ -631,6 +640,9 @@ export function createGymsRouter(pool, hasPassword, verifyPassword) {
 
       if (!utilityName || utilityName.length === 0) {
         return res.status(400).json({ error: 'utility_name is required' });
+      }
+      if (utilityName.length > 50) {
+        return res.status(400).json({ error: 'utility_name must be 50 chars or fewer' });
       }
       if (vote !== 1 && vote !== -1) {
         return res.status(400).json({ error: 'vote must be 1 (upvote) or -1 (downvote)' });
@@ -816,43 +828,20 @@ export function createGymsRouter(pool, hasPassword, verifyPassword) {
         params.push(city);
       }
       
-      // Add WHERE clause to the base CTE
-      // The base CTE structure is: "base as (select ... from gyms\n),"
-      // We need to add WHERE after "from gyms" but before the closing parenthesis
-      const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
-      
-      // Find "from gyms" in the base CTE and add WHERE clause after it
-      // The query structure: "from gyms\n      ),"
-      // Match "from gyms" followed by any whitespace/newlines, then closing paren and comma
+      // The base CTE already contains `where business_status = 'OPERATIONAL'`
+      // (added by Phase 1b of the gym-refresh migration). Append additional
+      // conditions with AND, anchored on that filter, so we never produce
+      // two WHERE clauses.
+      const whereClause = `AND ${whereConditions.join(' AND ')}`;
+
+      const anchor = /(where business_status = 'OPERATIONAL')/i;
       let originalQ = q;
-      
-      // Pattern: Match "from gyms" followed by whitespace/newlines, then "),"
-      // Use non-greedy matching to stop at the first closing paren
-      q = q.replace(/(from gyms)([\s\S]*?\)\s*,)/i, (match, p1, p2) => {
-        // p1 = "from gyms"
-        // p2 = whitespace/newlines + "),"
-        // Insert WHERE clause right after "from gyms" and before the closing paren
-        return `${p1} ${whereClause}${p2}`;
-      });
-      
+
+      q = q.replace(anchor, (_match, p1) => `${p1} ${whereClause}`);
+
       if (q === originalQ) {
-        // Fallback: Try matching without the comma requirement
-        q = q.replace(/(from gyms)([\s\S]*?\))/i, (match, p1, p2) => {
-          return `${p1} ${whereClause}${p2}`;
-        });
-      }
-      
-      if (q === originalQ) {
-        console.error('Failed to add WHERE clause to query. Query structure (first 1000 chars):', q.substring(0, 1000));
-        console.error('Looking for pattern: from gyms');
-        return res.status(500).json({ error: 'Failed to build query', details: 'Could not inject WHERE clause' });
-      }
-      
-      // Validate the query has proper syntax before executing
-      // Check that we didn't accidentally create duplicate "from" keywords or malformed SQL
-      if (q.match(/from\s+from/i)) {
-        console.error('Query has duplicate "from" keywords. Query (first 500 chars):', q.substring(0, 500));
-        return res.status(500).json({ error: 'Failed to build query', details: 'Invalid query structure' });
+        console.error("Failed to add region filter: anchor `where business_status = 'OPERATIONAL'` not found.");
+        return res.status(500).json({ error: 'Failed to build query', details: 'Could not inject region filter' });
       }
       
       // Log the modified query for debugging (first 500 chars)
@@ -925,7 +914,9 @@ export function createGymsRouter(pool, hasPassword, verifyPassword) {
                  ST_X(ST_AsText(geom::geometry)) as lng,
                  ST_Y(ST_AsText(geom::geometry)) as lat,
                  image_primary_url,
-                 raw
+                 raw,
+                 business_status,
+                 closed_at
           from gyms
           where id = $1
         ),
@@ -1092,15 +1083,15 @@ export function createGymsRouter(pool, hasPassword, verifyPassword) {
         
         q += `
         select b.*,
-               vs.smell_avg, vs.smell_votes,
-               vs.difficulty_avg, vs.difficulty_votes,
-               vs.parking_availability_avg, vs.parking_votes,
-               vs.pet_friendly_avg, vs.pet_friendly_votes`;
+               vs.smell_avg, coalesce(vs.smell_votes, 0)::int as smell_votes,
+               vs.difficulty_avg, coalesce(vs.difficulty_votes, 0)::int as difficulty_votes,
+               vs.parking_availability_avg, coalesce(vs.parking_votes, 0)::int as parking_votes,
+               vs.pet_friendly_avg, coalesce(vs.pet_friendly_votes, 0)::int as pet_friendly_votes`;
         
         if (styleColumnsExist) {
           q += `,
                sa.styles,
-               sa.style_vote_count`;
+               coalesce(sa.style_vote_count, 0)::int as style_vote_count`;
         } else {
           q += `,
                null::jsonb as styles,
@@ -1154,23 +1145,27 @@ export function createGymsRouter(pool, hasPassword, verifyPassword) {
         return res.status(rate.status).json({ error: rate.error, retry_after_seconds: rate.retry_after_seconds });
       }
 
-      // Validate and extract vote fields
-      const smell = req.body?.smell !== undefined ? Number(req.body.smell) : null;
+      // Validate and extract vote fields.
+      // Note: `!= null` (loose) treats both an omitted field AND an explicit
+      // JSON null as "not provided". A strict `!== undefined` check would let
+      // `{"smell": null}` through, and `Number(null)` is 0 — silently storing
+      // a real 0 vote that drags the average down.
+      const smell = req.body?.smell != null ? Number(req.body.smell) : null;
       if (smell !== null && (!Number.isFinite(smell) || smell < 0 || smell > 100)) {
         return res.status(400).json({ error: 'smell must be 0..100' });
       }
 
-      const difficulty = req.body?.difficulty !== undefined ? Number(req.body.difficulty) : null;
+      const difficulty = req.body?.difficulty != null ? Number(req.body.difficulty) : null;
       if (difficulty !== null && (!Number.isFinite(difficulty) || difficulty < -3 || difficulty > 3)) {
         return res.status(400).json({ error: 'difficulty must be -3..3' });
       }
 
-      const parkingAvailability = req.body?.parking_availability !== undefined ? Number(req.body.parking_availability) : null;
+      const parkingAvailability = req.body?.parking_availability != null ? Number(req.body.parking_availability) : null;
       if (parkingAvailability !== null && (!Number.isFinite(parkingAvailability) || parkingAvailability < 0 || parkingAvailability > 100)) {
         return res.status(400).json({ error: 'parking_availability must be 0..100' });
       }
 
-      const petFriendly = req.body?.pet_friendly !== undefined ? Number(req.body.pet_friendly) : null;
+      const petFriendly = req.body?.pet_friendly != null ? Number(req.body.pet_friendly) : null;
       if (petFriendly !== null && (!Number.isFinite(petFriendly) || petFriendly < 0 || petFriendly > 100)) {
         return res.status(400).json({ error: 'pet_friendly must be 0..100' });
       }
@@ -1355,7 +1350,12 @@ export function createGymsRouter(pool, hasPassword, verifyPassword) {
   router.post('/:id/smell', async (req, res) => {
     try {
       const id = req.params.id;
-      const smell = Number(req.body?.smell);
+      // Reject an omitted or explicitly-null smell — Number(null) is 0, which
+      // would otherwise pass the range check and store a bogus 0 vote.
+      if (req.body?.smell == null) {
+        return res.status(400).json({ error: 'smell is required' });
+      }
+      const smell = Number(req.body.smell);
       if (!Number.isFinite(smell) || smell < 0 || smell > 100) {
         return res.status(400).json({ error: 'smell must be 0..100' });
       }

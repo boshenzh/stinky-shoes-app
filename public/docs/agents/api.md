@@ -22,12 +22,20 @@ Query params:
 
 | Param | Type | Notes |
 | --- | --- | --- |
-| `bbox` | `minLng,minLat,maxLng,maxLat` | Optional. Restricts to a geographic bounding box. |
+| `bbox` | `minLng,minLat,maxLng,maxLat` | Optional. Restricts to a geographic bounding box. When given, all matching gyms are returned. |
+| `limit` | int | Only applies when `bbox` is **absent**. Default `100`, max `500`. |
+| `offset` | int | Only applies when `bbox` is absent. Default `0`. Use with `limit` to page through the full set. |
 
-Response: array of gyms with rolled-up vote stats (averages over the last 100 votes per gym), utility usage counts, and style distribution.
+Response: array of gyms with rolled-up vote stats (vote counts are integers, `0` when a gym has no votes; averages are `null` when there are no votes), utility usage counts, and style distribution.
+
+Without `bbox` the endpoint pages the full table (~17k gyms) — it does **not** dump everything at once. Pass `bbox` to get every gym in a region, or `limit`/`offset` to paginate globally.
 
 ```sh
+# Bounding box — every gym in the region
 curl 'https://yourshoesmells.com/api/gyms?bbox=-74.05,40.65,-73.85,40.85'
+
+# No bbox — first 100 gyms; page with offset
+curl 'https://yourshoesmells.com/api/gyms?limit=100&offset=200'
 ```
 
 ### `GET /api/gyms/:id`

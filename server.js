@@ -61,6 +61,23 @@ function getPool() {
 
 const pool = getPool();
 
+// Boot-time schema check: the gyms route filters listing queries on
+// `business_status`. If the column hasn't been migrated onto this DB yet,
+// every listing request will 500. Log loudly so a failed deploy is obvious
+// without waiting for users to hit the bug.
+pool.query(`
+  SELECT 1 FROM information_schema.columns
+  WHERE table_name = 'gyms' AND column_name = 'business_status' LIMIT 1
+`).then(r => {
+  if (r.rows.length === 0) {
+    console.error('🚨 SCHEMA MISMATCH: gyms.business_status is missing on the connected DB.');
+    console.error('   GET /api/gyms and /api/gyms/by-region will fail until migration 001 runs.');
+    console.error('   Apply: node scripts/run_migration.mjs scripts/migrations/001_add_business_status.sql --target=<local|neon>');
+  }
+}).catch(err => {
+  console.error('Boot-time schema check failed (continuing):', err.message);
+});
+
 // Resolve Authorization: Bearer ... into req.user before any route runs.
 app.use(createBearerMiddleware(pool));
 

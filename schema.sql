@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS gyms (
 );
 
 -- Add state column migration (for existing databases)
-DO $$ 
+DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'gyms' AND column_name = 'state') THEN
     ALTER TABLE gyms ADD COLUMN state text;
@@ -41,6 +41,28 @@ BEGIN
     CREATE INDEX IF NOT EXISTS gyms_city_state_country_idx ON gyms(city, state, country_code);
   END IF;
 END $$;
+
+-- Add business_status / verification tracking columns (for existing databases)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'gyms' AND column_name = 'business_status') THEN
+    ALTER TABLE gyms ADD COLUMN business_status text NOT NULL DEFAULT 'OPERATIONAL';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'gyms' AND column_name = 'closed_at') THEN
+    ALTER TABLE gyms ADD COLUMN closed_at timestamptz;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'gyms' AND column_name = 'last_verified_at') THEN
+    ALTER TABLE gyms ADD COLUMN last_verified_at timestamptz;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'gyms' AND column_name = 'verification_source') THEN
+    ALTER TABLE gyms ADD COLUMN verification_source text;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'gyms_business_status_chk') THEN
+    ALTER TABLE gyms ADD CONSTRAINT gyms_business_status_chk
+      CHECK (business_status IN ('OPERATIONAL', 'CLOSED_PERMANENTLY', 'UNVERIFIED'));
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS gyms_business_status_idx ON gyms (business_status);
 
 -- Users table
 CREATE TABLE IF NOT EXISTS users (
